@@ -5,87 +5,138 @@ from streamlit_autorefresh import st_autorefresh
 
 # --- MOBILE UI CONFIG ---
 st.set_page_config(page_title="Jeremiah Edge", layout="centered")
-
-# Auto-refresh every 30 seconds to keep data live on your mobile browser
 st_autorefresh(interval=30000, key="datarefresh")
 
-# Corrected CSS styling for mobile visibility
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 1.5rem; }
-    .stAlert { padding: 0.5rem; }
+    .stAlert { padding: 0.8rem; border-radius: 10px; }
+    .stContainer { border: 1px solid #444; padding: 10px; border-radius: 10px; margin-bottom: 12px; }
+    .tf-badge { font-weight: bold; padding: 2px 6px; border-radius: 4px; background: #333; }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏹 Jeremiah Edge")
+st.title("🏹 JEREMIAH EDGE")
 
-# --- FAST ENGINE ---
+# --- CORE SETTINGS ---
 EXCHANGE = ccxt.mexc()
-# Manual list for stability as requested
 SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT']
 TIMEFRAMES = ['3m', '5m', '15m']
-SQZ_LIMIT = 0.001  # Strict 0.1% compression threshold
+SQZ_LIMIT = 0.001  # 0.1% Threshold
 
-def get_signal(symbol, tf):
+# ==============================================================================
+# MASTER VALIDATION FUNCTION (THE SINGLE SOURCE OF TRUTH)
+# ==============================================================================
+def is_jeremiah_compressed(c, s20, s100, s200):
+    """
+    CENTRAL ENFORCEMENT: The only place where Jeremiah Edge math lives.
+   
+    """
+    # 1. ALL TOGETHER: Price + SMA20 + SMA100 within 0.1%
+    all_together = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s100)/s20 <= SQZ_LIMIT)
+    
+    # 2. SPECIAL ONE: Price + SMA20 + SMA200 within 0.1%
+    special_one = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s200)/s20 <= SQZ_LIMIT)
+    
+    return all_together or special_one
+
+# ==============================================================================
+# INDEPENDENT SIGNAL ENGINE
+# ==============================================================================
+def get_timeframe_signal(symbol, tf):
+    """Processes each timeframe as a standalone tradable environment."""
     try:
-        # Fetch minimum candles for SMA20, 100, and 200
-        bars = EXCHANGE.fetch_ohlcv(symbol, timeframe=tf, limit=201)
+        bars = EXCHANGE.fetch_ohlcv(symbol, timeframe=tf, limit=210)
         df = pd.DataFrame(bars, columns=['ts', 'o', 'h', 'l', 'c', 'v'])
         
-        c = df['c'].iloc[-1]
-        s20 = df['c'].rolling(20).mean().iloc[-1]
-        s100 = df['c'].rolling(100).mean().iloc[-1]
-        s200 = df['c'].rolling(200).mean().iloc[-1]
+        df['s20'] = df['c'].rolling(20).mean()
+        df['s100'] = df['c'].rolling(100).mean()
+        df['s200'] = df['c'].rolling(200).mean()
+        df = df.dropna().reset_index(drop=True)
 
-        # 1. ALL TOGETHER (Price + 20 + 100)
-        sqz_100 = abs(c - s20)/c <= SQZ_LIMIT and abs(s20 - s100)/s20 <= SQZ_LIMIT
+        # 1. RECURSIVE CLUSTER DETECTION (Calls Master SSoT)
+        cluster_candles = []
+        wobble_count = 0
         
-        # 2. SPECIAL ONE (Price + 20 + 200)
-        sqz_200 = abs(c - s20)/c <= SQZ_LIMIT and abs(s20 - s200)/s20 <= SQZ_LIMIT
+        for i in range(len(df)-2, 0, -1):
+            row = df.iloc[i]
+            if is_jeremiah_compressed(row['c'], row['s20'], row['s100'], row['s200']):
+                cluster_candles.append(row)
+                wobble_count = 0 
+            else:
+                wobble_count += 1
+                if wobble_count > 1: # Wobble Tolerance
+                    break
         
-        # 4. ELEPHANT BAR (Expansion Check)
-        prev_c = df['c'].iloc[-2]
-        prev_s20 = df['c'].rolling(20).mean().iloc[-2]
-        was_sqz = abs(prev_c - prev_s20)/prev_c <= SQZ_LIMIT
-        is_expansion = was_sqz and abs(c - s20)/c > SQZ_LIMIT
+        has_valid_cluster = len(cluster_candles) >= 1
+        
+        # 2. CURRENT STATE (Calls Master SSoT)
+        curr = df.iloc[-1]
+        is_currently_sqz = is_jeremiah_compressed(curr['c'], curr['s20'], curr['s100'], curr['s200'])
 
-        return {"sqz": sqz_100 or sqz_200, "expansion": is_expansion, "price": c}
+        # 3. INDEPENDENT EXPANSION VALIDATION
+        found_expansion = False
+        direction = None
+        
+        if has_valid_cluster and not is_currently_sqz:
+            is_moving = abs(curr['c'] - curr['s20'])/curr['c'] > SQZ_LIMIT
+            curr_body = abs(curr['c'] - curr['o'])
+            avg_cluster_body = sum(abs(row['c'] - row['o']) for row in cluster_candles) / len(cluster_candles)
+            
+            # 1x Body Expansion Rule
+            if is_moving and curr_body > avg_cluster_body:
+                if curr['c'] > curr['o'] and curr['c'] > curr['s20']:
+                    direction = "BULLISH"
+                    found_expansion = True
+                elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
+                    direction = "BEARISH"
+                    found_expansion = True
+
+        return {
+            "sqz": is_currently_sqz,
+            "expansion": found_expansion,
+            "dir": direction,
+            "price": curr['c']
+        }
     except:
         return None
 
-# --- SCANNER DISPLAY ---
-st.subheader("📡 Live Market Scan")
-status_placeholder = st.empty()
+# ==============================================================================
+# UI & INDEPENDENT MONITORING
+# ==============================================================================
+st.subheader("📡 Independent Timeframe Monitor")
 found_signal = False
 
-# Loop through each coin and check for compression/expansion
 for symbol in SYMBOLS:
-    tf_data = {}
+    tf_results = {}
     for tf in TIMEFRAMES:
-        res = get_signal(symbol, tf)
-        if res:
-            tf_data[tf] = res
+        res = get_timeframe_signal(symbol, tf)
+        if res: tf_results[tf] = res
 
-    # 3. MEGA SQZ: Triggered if squeeze appears on all timeframes
-    is_mega = all(tf_data[t]["sqz"] for t in TIMEFRAMES if t in tf_data)
+    # MEGA SQZ: Higher-order condition (all TFs currently compressed)
+    is_mega = all(tf_results[tf]["sqz"] for tf in TIMEFRAMES if tf in tf_results)
     
-    # Detect which timeframes have an expansion candle
-    expansion_tfs = [t for t, d in tf_data.items() if d["expansion"]]
-
-    # UI output if a signal is found
-    if is_mega or expansion_tfs:
+    # Check if ANY TF has an expansion or squeeze signal
+    if is_mega or any(tf_results[tf]["sqz"] or tf_results[tf]["expansion"] for tf in tf_results):
         found_signal = True
-        with st.container(border=True):
-            st.write(f"### 🔥 {symbol}")
+        with st.container():
+            st.write(f"### {symbol} | ${tf_results['3m']['price']}")
+            
             if is_mega:
-                st.error("MEGA SQZ: 3m + 5m + 15m COMPRESSION")
-            for t in expansion_tfs:
-                st.success(f"EXPANSION: {t} Elephant Bar")
-            st.caption(f"Current Price: {tf_data['3m']['price']}")
+                st.error("🚨 MEGA SQZ: All-Timeframe Cluster Confirmed")
+            
+            # Display signals independently by timeframe
+            for tf in TIMEFRAMES:
+                res = tf_results.get(tf)
+                if not res: continue
+                
+                if res["expansion"]:
+                    color = "green" if res["dir"] == "BULLISH" else "red"
+                    st.success(f"**{tf} {res['dir']} RELEASE:** Elephant Bar (1x Body Expansion)")
+                elif res["sqz"]:
+                    st.info(f"**{tf}:** Active Jeremiah Compression Zone")
 
-# If no signals meet the strict 0.1% rule, show a status message
 if not found_signal:
-    st.info("Scanning... No 0.1% compression clusters found right now.")
+    st.info("Scanning... No Jeremiah Edge clusters detected in 3m, 5m, or 15m.")
 
 st.divider()
-st.caption("Last Heartbeat: " + pd.Timestamp.now().strftime("%H:%M:%S"))
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Architecture: Decentralized SSoT Enforcement")
