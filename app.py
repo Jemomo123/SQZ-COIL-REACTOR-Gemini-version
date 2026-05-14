@@ -1,7 +1,12 @@
 import streamlit as st
 import pandas as pd
 import ccxt
+import logging
 from streamlit_autorefresh import st_autorefresh
+
+# --- LOGGING CONFIG (For Render Logs) ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # --- MOBILE UI CONFIG ---
 st.set_page_config(page_title="Jeremiah Edge", layout="centered")
@@ -11,7 +16,7 @@ st.markdown("""
     <style>
     .stAlert { padding: 0.8rem; border-radius: 10px; }
     .stContainer { border: 1px solid #444; padding: 10px; border-radius: 10px; margin-bottom: 12px; }
-    .tf-badge { font-weight: bold; padding: 2px 6px; border-radius: 4px; background: #333; }
+    .status-dim { color: #888; font-size: 0.8rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -24,26 +29,17 @@ TIMEFRAMES = ['3m', '5m', '15m']
 SQZ_LIMIT = 0.001  # 0.1% Threshold
 
 # ==============================================================================
-# MASTER VALIDATION FUNCTION (THE SINGLE SOURCE OF TRUTH)
+# MASTER VALIDATION (SSoT)
 # ==============================================================================
 def is_jeremiah_compressed(c, s20, s100, s200):
-    """
-    CENTRAL ENFORCEMENT: The only place where Jeremiah Edge math lives.
-   
-    """
-    # 1. ALL TOGETHER: Price + SMA20 + SMA100 within 0.1%
     all_together = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s100)/s20 <= SQZ_LIMIT)
-    
-    # 2. SPECIAL ONE: Price + SMA20 + SMA200 within 0.1%
     special_one = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s200)/s20 <= SQZ_LIMIT)
-    
     return all_together or special_one
 
 # ==============================================================================
-# INDEPENDENT SIGNAL ENGINE
+# RESILIENT DATA ENGINE
 # ==============================================================================
 def get_timeframe_signal(symbol, tf):
-    """Processes each timeframe as a standalone tradable environment."""
     try:
         bars = EXCHANGE.fetch_ohlcv(symbol, timeframe=tf, limit=210)
         df = pd.DataFrame(bars, columns=['ts', 'o', 'h', 'l', 'c', 'v'])
@@ -53,10 +49,8 @@ def get_timeframe_signal(symbol, tf):
         df['s200'] = df['c'].rolling(200).mean()
         df = df.dropna().reset_index(drop=True)
 
-        # 1. RECURSIVE CLUSTER DETECTION (Calls Master SSoT)
         cluster_candles = []
         wobble_count = 0
-        
         for i in range(len(df)-2, 0, -1):
             row = df.iloc[i]
             if is_jeremiah_compressed(row['c'], row['s20'], row['s100'], row['s200']):
@@ -64,25 +58,19 @@ def get_timeframe_signal(symbol, tf):
                 wobble_count = 0 
             else:
                 wobble_count += 1
-                if wobble_count > 1: # Wobble Tolerance
-                    break
+                if wobble_count > 1: break # Wobble Tolerance
         
         has_valid_cluster = len(cluster_candles) >= 1
-        
-        # 2. CURRENT STATE (Calls Master SSoT)
         curr = df.iloc[-1]
         is_currently_sqz = is_jeremiah_compressed(curr['c'], curr['s20'], curr['s100'], curr['s200'])
 
-        # 3. INDEPENDENT EXPANSION VALIDATION
         found_expansion = False
         direction = None
-        
         if has_valid_cluster and not is_currently_sqz:
             is_moving = abs(curr['c'] - curr['s20'])/curr['c'] > SQZ_LIMIT
             curr_body = abs(curr['c'] - curr['o'])
             avg_cluster_body = sum(abs(row['c'] - row['o']) for row in cluster_candles) / len(cluster_candles)
             
-            # 1x Body Expansion Rule
             if is_moving and curr_body > avg_cluster_body:
                 if curr['c'] > curr['o'] and curr['c'] > curr['s20']:
                     direction = "BULLISH"
@@ -91,52 +79,58 @@ def get_timeframe_signal(symbol, tf):
                     direction = "BEARISH"
                     found_expansion = True
 
-        return {
-            "sqz": is_currently_sqz,
-            "expansion": found_expansion,
-            "dir": direction,
-            "price": curr['c']
-        }
-    except:
-        return None
+        return {"sqz": is_currently_sqz, "expansion": found_expansion, "dir": direction, "price": curr['c'], "status": "ok"}
+    except Exception as e:
+        logger.error(f"FAIL: {symbol} {tf} | Error: {str(e)}") # Quiet Logging
+        return {"status": "fail"}
 
 # ==============================================================================
-# UI & INDEPENDENT MONITORING
+# UI MONITORING
 # ==============================================================================
 st.subheader("📡 Independent Timeframe Monitor")
 found_signal = False
+failed_tfs = []
 
 for symbol in SYMBOLS:
     tf_results = {}
     for tf in TIMEFRAMES:
         res = get_timeframe_signal(symbol, tf)
-        if res: tf_results[tf] = res
+        if res["status"] == "ok":
+            tf_results[tf] = res
+        else:
+            failed_tfs.append(f"{symbol} {tf}")
 
-    # MEGA SQZ: Higher-order condition (all TFs currently compressed)
-    is_mega = all(tf_results[tf]["sqz"] for tf in TIMEFRAMES if tf in tf_results)
+    if not tf_results: continue
+
+    # Mega SQZ only triggers if ALL 3 are present and ALL 3 are compressed
+    is_mega = len(tf_results) == 3 and all(tf_results[tf]["sqz"] for tf in TIMEFRAMES)
     
-    # Check if ANY TF has an expansion or squeeze signal
-    if is_mega or any(tf_results[tf]["sqz"] or tf_results[tf]["expansion"] for tf in tf_results):
+    if is_mega or any(res["sqz"] or res["expansion"] for res in tf_results.values()):
         found_signal = True
+        # Safety for price display
+        display_price = next((res["price"] for res in tf_results.values()), "N/A")
+        
         with st.container():
-            st.write(f"### {symbol} | ${tf_results['3m']['price']}")
+            st.write(f"### {symbol} | ${display_price}")
+            if is_mega: st.error("🚨 MEGA SQZ: Triple Timeframe Compression")
             
-            if is_mega:
-                st.error("🚨 MEGA SQZ: All-Timeframe Cluster Confirmed")
-            
-            # Display signals independently by timeframe
             for tf in TIMEFRAMES:
                 res = tf_results.get(tf)
                 if not res: continue
-                
                 if res["expansion"]:
-                    color = "green" if res["dir"] == "BULLISH" else "red"
-                    st.success(f"**{tf} {res['dir']} RELEASE:** Elephant Bar (1x Body Expansion)")
+                    st.success(f"**{tf} {res['dir']} RELEASE:** Elephant Bar (1x Body)")
                 elif res["sqz"]:
-                    st.info(f"**{tf}:** Active Jeremiah Compression Zone")
+                    st.info(f"**{tf}:** Active Jeremiah Compression")
 
 if not found_signal:
-    st.info("Scanning... No Jeremiah Edge clusters detected in 3m, 5m, or 15m.")
+    st.info("Scanning... No Jeremiah Edge clusters detected.")
 
+# Defensive Status Footer
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Architecture: Decentralized SSoT Enforcement")
+col1, col2 = st.columns(2)
+with col1:
+    st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')}")
+with col2:
+    if failed_tfs:
+        st.markdown(f"<p class='status-dim'>⚠️ Missing: {', '.join(failed_tfs)}</p>", unsafe_allow_html=True)
+                            
