@@ -116,7 +116,12 @@ def safe_fetch_ohlcv(symbol, tf, limit):
             df['s20'] = df['c'].rolling(20).mean()
             df['s100'] = df['c'].rolling(100).mean()
             df['s200'] = df['c'].rolling(200).mean()
-            return df.dropna().reset_index(drop=True), name
+            
+            # --- CRITICAL DROPNA TRUNCATION LOGGING ---
+            df = df.dropna().reset_index(drop=True)
+            logger.info(f"{symbol} {tf} FINAL_ROWS_AFTER_DROPNA = {len(df)}")
+            
+            return df, name
         except Exception as e:
             continue
     return None, None
@@ -146,7 +151,6 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
     direction = None
     context_flags = []
 
-    # Map scanner timeframes to calculated macro structures safely
     target_macro_tf = "15m" if tf in ["3m", "5m"] else "1h"
     macro_data = btc_regimes.get(target_macro_tf, {"state": "TRANSITIONAL"})
     macro_state = macro_data.get("state", "TRANSITIONAL")
@@ -162,7 +166,6 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
-    # Context tag building
     if found_expansion:
         if (direction == "BULLISH" and macro_state == "TRENDING_UP") or (direction == "BEARISH" and macro_state == "TRENDING_DOWN"):
             context_flags.append(f"<span class='badge badge-aligned'>ALIGNED WITH BTC {target_macro_tf.upper()}</span>")
@@ -186,9 +189,9 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
 st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
 btc_regimes = {}
 
-# --- FIXED: Pull deep 450 candles to feed the MA200 math without clearing safety fences ---
+# --- DEEP HISTORICAL DEPTH INCREASED TO 600 FOR MACROSTRUCTURE REGIME FEED ---
 for tf in REGIME_TIMEFRAMES:
-    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=450)
+    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=600)
     if btc_df is not None:
         state, structure = detect_market_regime(btc_df)
         btc_regimes[tf] = {"state": state, "structure": structure}
@@ -252,4 +255,4 @@ if not found_signal:
     st.info("Scanning... No Jeremiah Edge clusters detected.")
 
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled SSoT Engine Block")
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled SSoT Deep Memory V3")
