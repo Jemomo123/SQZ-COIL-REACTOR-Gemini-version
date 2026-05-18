@@ -58,7 +58,6 @@ def is_jeremiah_compressed(c, s20, s100, s200):
 def detect_market_regime(df):
     """
     Centralized Single Source of Truth for Institutional Market Structure.
-    Analyzes deep macrostructure memory from 400 allocated candles.
     """
     if len(df) < 150: 
         return "TRANSITIONAL", "INSUFFICIENT DATA"
@@ -147,7 +146,7 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
     direction = None
     context_flags = []
 
-    # --- FIXED MAPPER: Safely cross-references Small Timeframes with Macro States ---
+    # Map scanner timeframes to calculated macro structures safely
     target_macro_tf = "15m" if tf in ["3m", "5m"] else "1h"
     macro_data = btc_regimes.get(target_macro_tf, {"state": "TRANSITIONAL"})
     macro_state = macro_data.get("state", "TRANSITIONAL")
@@ -163,7 +162,7 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
-    # --- CONTEXT FLAGS ---
+    # Context tag building
     if found_expansion:
         if (direction == "BULLISH" and macro_state == "TRENDING_UP") or (direction == "BEARISH" and macro_state == "TRENDING_DOWN"):
             context_flags.append(f"<span class='badge badge-aligned'>ALIGNED WITH BTC {target_macro_tf.upper()}</span>")
@@ -187,9 +186,9 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
 st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
 btc_regimes = {}
 
-# --- FIXED: Macro Memory isolated cleanly to 400 bars ---
+# --- FIXED: Pull deep 450 candles to feed the MA200 math without clearing safety fences ---
 for tf in REGIME_TIMEFRAMES:
-    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=400)
+    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=450)
     if btc_df is not None:
         state, structure = detect_market_regime(btc_df)
         btc_regimes[tf] = {"state": state, "structure": structure}
@@ -240,7 +239,6 @@ for symbol in SYMBOLS:
                 if not res: continue
                 source_tag = f"<span class='status-dim'>[{res['source']}]</span>"
                 
-                # --- FIXED: Standard HTML block structure eliminates st.success bugs ---
                 if res["expansion"]:
                     st.markdown(f"""
                         <div style="background-color: rgba(16, 185, 129, 0.15); padding: 12px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 8px;">
@@ -254,5 +252,4 @@ if not found_signal:
     st.info("Scanning... No Jeremiah Edge clusters detected.")
 
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled Memory Allocation Matrix V2")
-    
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled SSoT Engine Block")
