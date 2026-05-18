@@ -60,7 +60,7 @@ def detect_market_regime(df):
     Centralized Single Source of Truth for Institutional Market Structure.
     Strictly forbidden from using or calling compression variables.
     """
-    if len(df) < 50:
+    if len(df) < 200:  # Validates deep dataset availability
         return "TRANSITIONAL", "INSUFFICIENT DATA"
     
     curr = df.iloc[-1]
@@ -68,7 +68,6 @@ def detect_market_regime(df):
     # 1. Slope Vectors (Directional Persistence)
     s20_lookback = 5
     ma20_slope = (df['s20'].iloc[-1] - df['s20'].iloc[-s20_lookback]) / s20_lookback
-    ma100_slope = (df['s100'].iloc[-1] - df['s100'].iloc[-s20_lookback]) / s20_lookback
     
     # Threshold based on directional standard deviation fraction
     ma20_flat = abs(ma20_slope) < (df['c'].rolling(14).std().iloc[-1] * 0.02)
@@ -171,13 +170,11 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
         h4_state = btc_regimes.get("4h", {}).get("state", "TRANSITIONAL")
         h1_state = btc_regimes.get("1h", {}).get("state", "TRANSITIONAL")
         
-        # 4H Macro Trend Alignment
         if (direction == "BULLISH" and h4_state == "TRENDING_UP") or (direction == "BEARISH" and h4_state == "TRENDING_DOWN"):
             context_flags.append("<span class='badge badge-aligned'>ALIGNED WITH 4H TREND</span>")
         elif h4_state in ["TRENDING_UP", "TRENDING_DOWN"]:
             context_flags.append("<span class='badge badge-counter'>COUNTER-TREND RELEASE</span>")
             
-        # 1H Intermediate Context Filters
         if h1_state == "RANGING":
             context_flags.append("<span class='badge badge-range'>INSIDE 1H STRUCTURAL BOX</span>")
         elif h1_state == "RANGE_EXPANSION":
@@ -197,8 +194,9 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
 st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
 btc_regimes = {}
 
+# --- UPDATE 1: REGIME ENGINE FETCH DEPTH SET TO 210 ---
 for tf in REGIME_TIMEFRAMES:
-    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=100)
+    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=210)  # Upgraded fetch depth to eliminate INSUFFICIENT DATA
     if btc_df is not None:
         state, structure = detect_market_regime(btc_df)
         btc_regimes[tf] = {"state": state, "structure": structure}
@@ -209,8 +207,6 @@ if btc_regimes:
         if tf in btc_regimes:
             state = btc_regimes[tf]["state"]
             struct = btc_regimes[tf]["structure"]
-            
-            # Context state highlighting
             color = "#10b981" if "UP" in state else "#ef4444" if "DOWN" in state else "#3b82f6" if "RANGE" in state else "#888888"
             html_table += f"<tr><td><b>{tf}</b></td><td style='color:{color}; font-weight:bold;'>{state}</td><td>{struct}</td></tr>"
     html_table += "</tbody></table>"
@@ -253,8 +249,10 @@ for symbol in SYMBOLS:
                 
                 if res["expansion"]:
                     st.success(f"**{tf} {res['dir']} RELEASE:** Elephant Bar (1x Body) {source_tag}<br>{res['context']}", unsafe_allow_html=True)
+                
+                # --- UPDATE 2: ACTIVE JEREMIAH COMPRESSION FORMAT FIX ---
                 elif res["sqz"]:
-                    st.info(f"**{tf}:** Active Jeremiah Compression {source_tag}")
+                    st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
 if not found_signal:
     st.info("Scanning... No Jeremiah Edge clusters detected.")
