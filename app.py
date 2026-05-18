@@ -58,29 +58,36 @@ def is_jeremiah_compressed(c, s20, s100, s200):
 def detect_market_regime(df):
     """
     Centralized Single Source of Truth for Institutional Market Structure.
+    Optimized with Adaptive Lookbacks to resolve API history caps.
     """
-    if len(df) < 150: 
+    available_rows = len(df)
+    if available_rows < 50: 
         return "TRANSITIONAL", "INSUFFICIENT DATA"
     
     curr = df.iloc[-1]
     
-    # 1. Slope Vectors
-    s20_lookback = 5
+    # 1. Slope Vectors (Scales lookback window relative to available data)
+    s20_lookback = min(5, max(2, available_rows // 20))
     ma20_slope = (df['s20'].iloc[-1] - df['s20'].iloc[-s20_lookback]) / s20_lookback
-    ma20_flat = abs(ma20_slope) < (df['c'].rolling(14).std().iloc[-1] * 0.02)
+    ma20_flat = abs(ma20_slope) < (df['c'].rolling(min(14, available_rows)).std().iloc[-1] * 0.02)
     
     # 2. Structural Highs/Lows
-    recent_df = df.iloc[-20:]
+    structure_window = min(20, available_rows)
+    recent_df = df.iloc[-structure_window:]
     higher_highs = df['h'].iloc[-1] >= recent_df['h'].median()
     lower_lows = df['l'].iloc[-1] <= recent_df['l'].median()
     
     # 3. Rotational & Candle Overlap Metrics
-    overlap_count = sum((df['h'].iloc[i] > df['l'].iloc[i-1]) and (df['l'].iloc[i] < df['h'].iloc[i-1]) for i in range(-5, 0))
+    overlap_window = min(5, available_rows - 1)
+    overlap_count = sum((df['h'].iloc[i] > df['l'].iloc[i-1]) and (df['l'].iloc[i] < df['h'].iloc[i-1]) for i in range(-overlap_window, 0))
+    
+    osc_window = min(10, available_rows - 1)
     oscillating = sum((df['c'].iloc[i] > df['s20'].iloc[i] and df['c'].iloc[i-1] < df['s20'].iloc[i-1]) or 
-                      (df['c'].iloc[i] < df['s20'].iloc[i] and df['c'].iloc[i-1] > df['s20'].iloc[i-1]) for i in range(-10, 0))
+                      (df['c'].iloc[i] < df['s20'].iloc[i] and df['c'].iloc[i-1] > df['s20'].iloc[i-1]) for i in range(-osc_window, 0))
 
     # 4. ATR Displacement
-    atr = (df['h'] - df['l']).rolling(14).mean().iloc[-1]
+    atr_window = min(14, available_rows)
+    atr = (df['h'] - df['l']).rolling(atr_window).mean().iloc[-1]
     recent_mid = recent_df['c'].median()
     is_contained = abs(curr['c'] - recent_mid) < (2 * atr)
     
@@ -102,7 +109,7 @@ def detect_market_regime(df):
 
 
 # ==============================================================================
-# SECURE ACQUISITION LAYER
+# SECURE ACQUISITION LAYER (WITH CASCADING FAILOVER)
 # ==============================================================================
 def safe_fetch_ohlcv(symbol, tf, limit):
     for exchange_info in EXCHANGE_CHAIN:
@@ -117,7 +124,7 @@ def safe_fetch_ohlcv(symbol, tf, limit):
             df['s100'] = df['c'].rolling(100).mean()
             df['s200'] = df['c'].rolling(200).mean()
             
-            # --- CRITICAL DROPNA TRUNCATION LOGGING ---
+            # --- EXTRACT CLEAN DATASETS & LOG REPO METRICS ---
             df = df.dropna().reset_index(drop=True)
             logger.info(f"{symbol} {tf} FINAL_ROWS_AFTER_DROPNA = {len(df)}")
             
@@ -189,7 +196,7 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
 st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
 btc_regimes = {}
 
-# --- DEEP HISTORICAL DEPTH INCREASED TO 600 FOR MACROSTRUCTURE REGIME FEED ---
+# --- MAXIMUM LOGICAL BUFFER REQUEST FOR MACRO DIRECTION ---
 for tf in REGIME_TIMEFRAMES:
     btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=600)
     if btc_df is not None:
@@ -255,4 +262,4 @@ if not found_signal:
     st.info("Scanning... No Jeremiah Edge clusters detected.")
 
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled SSoT Deep Memory V3")
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled Adaptive SSoT V4")
