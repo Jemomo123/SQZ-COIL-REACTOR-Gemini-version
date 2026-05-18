@@ -58,21 +58,19 @@ def is_jeremiah_compressed(c, s20, s100, s200):
 def detect_market_regime(df):
     """
     Centralized Single Source of Truth for Institutional Market Structure.
-    Analyzes deep historical macrostructure memory (Requires ~200 clean post-dropna rows).
+    Analyzes deep macrostructure memory from 400 allocated candles.
     """
     if len(df) < 150: 
         return "TRANSITIONAL", "INSUFFICIENT DATA"
     
     curr = df.iloc[-1]
     
-    # 1. Slope Vectors (Directional Persistence)
+    # 1. Slope Vectors
     s20_lookback = 5
     ma20_slope = (df['s20'].iloc[-1] - df['s20'].iloc[-s20_lookback]) / s20_lookback
-    
-    # Threshold based on directional standard deviation fraction
     ma20_flat = abs(ma20_slope) < (df['c'].rolling(14).std().iloc[-1] * 0.02)
     
-    # 2. Structural Highs/Lows (Pivots over 20 candles)
+    # 2. Structural Highs/Lows
     recent_df = df.iloc[-20:]
     higher_highs = df['h'].iloc[-1] >= recent_df['h'].median()
     lower_lows = df['l'].iloc[-1] <= recent_df['l'].median()
@@ -82,12 +80,12 @@ def detect_market_regime(df):
     oscillating = sum((df['c'].iloc[i] > df['s20'].iloc[i] and df['c'].iloc[i-1] < df['s20'].iloc[i-1]) or 
                       (df['c'].iloc[i] < df['s20'].iloc[i] and df['c'].iloc[i-1] > df['s20'].iloc[i-1]) for i in range(-10, 0))
 
-    # 4. ATR Displacement (Breakout Validity & Volatility Realization)
+    # 4. ATR Displacement
     atr = (df['h'] - df['l']).rolling(14).mean().iloc[-1]
     recent_mid = recent_df['c'].median()
     is_contained = abs(curr['c'] - recent_mid) < (2 * atr)
     
-    # --- RIGID ALGORITHMIC CLASSIFICATION PIPELINE ---
+    # --- RIGID ALGORITHMIC PIPELINE ---
     if (ma20_slope > 0 and curr['c'] > curr['s20'] and curr['s20'] > curr['s100'] and higher_highs and oscillating < 4):
         return "TRENDING_UP", "CLEAN TREND"
         
@@ -105,10 +103,9 @@ def detect_market_regime(df):
 
 
 # ==============================================================================
-# SECURE ACQUISITION LAYER (WITH MEMORY SPECIFICATION PER ENGINE)
+# SECURE ACQUISITION LAYER
 # ==============================================================================
 def safe_fetch_ohlcv(symbol, tf, limit):
-    """Fetches candle history. Limit is explicitly passed per asset/engine type."""
     for exchange_info in EXCHANGE_CHAIN:
         try:
             ex_obj = exchange_info["obj"]
@@ -126,7 +123,7 @@ def safe_fetch_ohlcv(symbol, tf, limit):
     return None, None
 
 def get_timeframe_signal(symbol, tf, btc_regimes):
-    """Microstructure Engine: Strictly locked to 210 candles to optimize API load."""
+    """Microstructure Engine: Pinned strictly to 210 candles."""
     df, source_name = safe_fetch_ohlcv(symbol, tf, limit=210) 
     if df is None:
         return {"status": "fail"}
@@ -150,6 +147,11 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
     direction = None
     context_flags = []
 
+    # --- FIXED MAPPER: Safely cross-references Small Timeframes with Macro States ---
+    target_macro_tf = "15m" if tf in ["3m", "5m"] else "1h"
+    macro_data = btc_regimes.get(target_macro_tf, {"state": "TRANSITIONAL"})
+    macro_state = macro_data.get("state", "TRANSITIONAL")
+
     if has_valid_cluster and not is_currently_sqz:
         is_moving = abs(curr['c'] - curr['s20'])/curr['c'] > SQZ_LIMIT
         curr_body = abs(curr['c'] - curr['o'])
@@ -161,20 +163,15 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
-    # --- CONTEXT FLAG CONFLATION ---
-    if found_expansion and btc_regimes:
-        h4_state = btc_regimes.get("4h", {}).get("state", "TRANSITIONAL")
-        h1_state = btc_regimes.get("1h", {}).get("state", "TRANSITIONAL")
-        
-        if (direction == "BULLISH" and h4_state == "TRENDING_UP") or (direction == "BEARISH" and h4_state == "TRENDING_DOWN"):
-            context_flags.append("<span class='badge badge-aligned'>ALIGNED WITH 4H TREND</span>")
-        elif h4_state in ["TRENDING_UP", "TRENDING_DOWN"]:
-            context_flags.append("<span class='badge badge-counter'>COUNTER-TREND RELEASE</span>")
+    # --- CONTEXT FLAGS ---
+    if found_expansion:
+        if (direction == "BULLISH" and macro_state == "TRENDING_UP") or (direction == "BEARISH" and macro_state == "TRENDING_DOWN"):
+            context_flags.append(f"<span class='badge badge-aligned'>ALIGNED WITH BTC {target_macro_tf.upper()}</span>")
+        elif macro_state in ["TRENDING_UP", "TRENDING_DOWN"]:
+            context_flags.append(f"<span class='badge badge-counter'>COUNTER-TREND TO BTC {target_macro_tf.upper()}</span>")
             
-        if h1_state == "RANGING":
-            context_flags.append("<span class='badge badge-range'>INSIDE 1H STRUCTURAL BOX</span>")
-        elif h1_state == "RANGE_EXPANSION":
-            context_flags.append("<span class='badge badge-aligned'>1H BREAKOUT ATTEMPT</span>")
+        if macro_state == "RANGING":
+            context_flags.append(f"<span class='badge badge-range'>INSIDE BTC {target_macro_tf.upper()} BOX</span>")
 
     return {
         "sqz": is_currently_sqz, "expansion": found_expansion, 
@@ -190,9 +187,9 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
 st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
 btc_regimes = {}
 
-# --- ENFORCED ARCHITECTURE RULE: MACROSTRUCTURE ONLY CLAIMS 400 CANDLES ---
+# --- FIXED: Macro Memory isolated cleanly to 400 bars ---
 for tf in REGIME_TIMEFRAMES:
-    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=400)  # Extended lookback allocated strictly to BTC Regime
+    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=400)
     if btc_df is not None:
         state, structure = detect_market_regime(btc_df)
         btc_regimes[tf] = {"state": state, "structure": structure}
@@ -220,7 +217,6 @@ outages = []
 for symbol in SYMBOLS:
     tf_results = {}
     for tf in TIMEFRAMES:
-        # Scanner functions safely run on the lightweight 210 candle pipeline
         res = get_timeframe_signal(symbol, tf, btc_regimes)
         if res["status"] == "ok":
             tf_results[tf] = res
@@ -244,8 +240,13 @@ for symbol in SYMBOLS:
                 if not res: continue
                 source_tag = f"<span class='status-dim'>[{res['source']}]</span>"
                 
+                # --- FIXED: Standard HTML block structure eliminates st.success bugs ---
                 if res["expansion"]:
-                    st.success(f"**{tf} {res['dir']} RELEASE:** Elephant Bar (1x Body) {source_tag}<br>{res['context']}", unsafe_allow_html=True)
+                    st.markdown(f"""
+                        <div style="background-color: rgba(16, 185, 129, 0.15); padding: 12px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 8px;">
+                            💥 <b>{tf} {res['dir']} RELEASE:</b> Elephant Bar (1x Body) {source_tag}<br style="margin-bottom: 4px;">{res['context']}
+                        </div>
+                    """, unsafe_allow_html=True)
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
@@ -253,4 +254,5 @@ if not found_signal:
     st.info("Scanning... No Jeremiah Edge clusters detected.")
 
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled Memory Allocation Matrix")
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled Memory Allocation Matrix V2")
+    
