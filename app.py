@@ -124,19 +124,16 @@ def safe_fetch_ohlcv(symbol, tf, limit):
             df['s100'] = df['c'].rolling(100).mean()
             df['s200'] = df['c'].rolling(200).mean()
             
-            # --- EXTRACT CLEAN DATASETS & LOG REPO METRICS ---
             df = df.dropna().reset_index(drop=True)
-            logger.info(f"{symbol} {tf} FINAL_ROWS_AFTER_DROPNA = {len(df)}")
-            
             return df, name
         except Exception as e:
             continue
     return None, None
 
 def get_timeframe_signal(symbol, tf, btc_regimes):
-    """Microstructure Engine: Pinned strictly to 210 candles."""
+    """Microstructure Engine: Pinned strictly to 210 candles with Volume Efficiency Filtering."""
     df, source_name = safe_fetch_ohlcv(symbol, tf, limit=210) 
-    if df is None:
+    if df is None or len(df) < 25:
         return {"status": "fail"}
         
     cluster_candles = []
@@ -157,6 +154,7 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
     found_expansion = False
     direction = None
     context_flags = []
+    is_liquidity_hole = False
 
     target_macro_tf = "15m" if tf in ["3m", "5m"] else "1h"
     macro_data = btc_regimes.get(target_macro_tf, {"state": "TRANSITIONAL"})
@@ -173,30 +171,49 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
+    # --- THE LIQUIDITY HOLE ENGINE ---
+    if found_expansion and curr['v'] > 0:
+        # Measure volume efficiency ($VER$): Price distance covered per 1 contract traded
+        curr_efficiency = curr_body / curr['v']
+        
+        # Calculate trailing volume efficiency baseline of past 20 candles
+        historical_bodies = abs(df['c'].iloc[-21:-1] - df['o'].iloc[-21:-1])
+        historical_volumes = df['v'].iloc[-21:-1]
+        
+        # Guard against zero division in history
+        historical_volumes = historical_volumes.replace(0, 1)
+        avg_historical_efficiency = (historical_bodies / historical_volumes).mean()
+        
+        # If the breakout candle moves 1.8x easier than normal, it's a hollow vacuum hole
+        if curr_efficiency > (avg_historical_efficiency * 1.8):
+            is_liquidity_hole = True
+
     if found_expansion:
-        if (direction == "BULLISH" and macro_state == "TRENDING_UP") or (direction == "BEARISH" and macro_state == "TRENDING_DOWN"):
-            context_flags.append(f"<span class='badge badge-aligned'>ALIGNED WITH BTC {target_macro_tf.upper()}</span>")
-        elif macro_state in ["TRENDING_UP", "TRENDING_DOWN"]:
-            context_flags.append(f"<span class='badge badge-counter'>COUNTER-TREND TO BTC {target_macro_tf.upper()}</span>")
-            
-        if macro_state == "RANGING":
-            context_flags.append(f"<span class='badge badge-range'>INSIDE BTC {target_macro_tf.upper()} BOX</span>")
+        if is_liquidity_hole:
+            context_flags.append("<span class='badge' style='background-color: #f59e0b; color: black; font-weight: bold;'>⚠️ LIQUIDITY HOLE: NO SPOT BID SUPPORT</span>")
+        else:
+            if (direction == "BULLISH" and macro_state == "TRENDING_UP") or (direction == "BEARISH" and macro_state == "TRENDING_DOWN"):
+                context_flags.append(f"<span class='badge badge-aligned'>ALIGNED WITH BTC {target_macro_tf.upper()}</span>")
+            elif macro_state in ["TRENDING_UP", "TRENDING_DOWN"]:
+                context_flags.append(f"<span class='badge badge-counter'>COUNTER-TREND TO BTC {target_macro_tf.upper()}</span>")
+                
+            if macro_state == "RANGING":
+                context_flags.append(f"<span class='badge badge-range'>INSIDE BTC {target_macro_tf.upper()} BOX</span>")
 
     return {
         "sqz": is_currently_sqz, "expansion": found_expansion, 
         "dir": direction, "price": curr['c'], "status": "ok", 
-        "source": source_name, "context": " ".join(context_flags)
+        "source": source_name, "context": " ".join(context_flags),
+        "hole": is_liquidity_hole
     }
 
 # ==============================================================================
 # UI INTERFACE PRODUCTION
 # ==============================================================================
 
-# --- PART 2 APPLICATION DISPLAY: BTC REGIME ENGINE ---
 st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
 btc_regimes = {}
 
-# --- MAXIMUM LOGICAL BUFFER REQUEST FOR MACRO DIRECTION ---
 for tf in REGIME_TIMEFRAMES:
     btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=600)
     if btc_df is not None:
@@ -218,7 +235,6 @@ else:
 
 st.divider()
 
-# --- CORES SIGNAL DISPLAY ---
 st.subheader("🏹 Strategy Monitor")
 found_signal = False
 outages = []
@@ -250,9 +266,14 @@ for symbol in SYMBOLS:
                 source_tag = f"<span class='status-dim'>[{res['source']}]</span>"
                 
                 if res["expansion"]:
+                    # Adjust container visually to highlight risk
+                    bg_color = "rgba(245, 158, 11, 0.12)" if res["hole"] else "rgba(16, 185, 129, 0.15)"
+                    border_color = "#f59e0b" if res["hole"] else "#10b981"
+                    title_text = f"⚠️ <b>{tf} {res['dir']} HOLLOW RELEASE:</b>" if res["hole"] else f"💥 <b>{tf} {res['dir']} RELEASE:</b>"
+                    
                     st.markdown(f"""
-                        <div style="background-color: rgba(16, 185, 129, 0.15); padding: 12px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 8px;">
-                            💥 <b>{tf} {res['dir']} RELEASE:</b> Elephant Bar (1x Body) {source_tag}<br style="margin-bottom: 4px;">{res['context']}
+                        <div style="background-color: {bg_color}; padding: 12px; border-radius: 8px; border-left: 5px solid {border_color}; margin-bottom: 8px;">
+                            {title_text} Elephant Bar (1x Body) {source_tag}<br style="margin-bottom: 4px;">{res['context']}
                         </div>
                     """, unsafe_allow_html=True)
                 elif res["sqz"]:
@@ -262,4 +283,4 @@ if not found_signal:
     st.info("Scanning... No Jeremiah Edge clusters detected.")
 
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled Adaptive SSoT V4")
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled Adaptive SSoT V5 (Vacuum Protected)")
