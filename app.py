@@ -14,6 +14,17 @@ logger = logging.getLogger(__name__)
 st.set_page_config(page_title="Jeremiah Edge Pro", layout="centered")
 st_autorefresh(interval=35000, key="datarefresh")
 
+# ==============================================================================
+# JEREMIAH EDGE SSoT V10 ARCHITECTURE BLUEPRINT
+# ==============================================================================
+# PART 1 = JEREMIAH COMPRESSION ENGINE (Creates Signals)
+#   - Detects SQZ, MEGA SQZ, and Elephant Bar releases at a 0.1% threshold.
+# PART 2 = BTC MARKET REGIME ENGINE (Explains Environment)
+#   - Tracks macro trend (15m, 1h, 4h). Never blocks or alters Part 1.
+# PART 3 = LIQUIDITY SHIELD ENGINE (Evaluates Move Quality)
+#   - Flags hollow liquidation cascades / thin books. Warning only.
+# ==============================================================================
+
 st.markdown("""
     <style>
     .stAlert { padding: 0.8rem; border-radius: 10px; }
@@ -44,6 +55,7 @@ st.markdown("""
         margin-bottom: 12px;
         letter-spacing: 0.5px;
     }
+    /* HIGH CONTRAST THEME FOR SUNLIGHT MOBILE SCANNERS */
     .header-meme { background-color: #a855f7; border: 2px solid #7e22ce; color: #ffffff; }
     .header-big { background-color: #eab308; border: 2px solid #b45309; color: #000000; }
     .empty-notice { color: #222222; font-weight: bold; padding: 5px 10px; font-size: 0.85rem; }
@@ -67,8 +79,9 @@ MEMECOINS = [
 ALL_SYMBOLS = BIG_CAPS + MEMECOINS
 TIMEFRAMES = ['3m', '5m', '15m'] 
 REGIME_TIMEFRAMES = ['15m', '1h', '4h']
-SQZ_LIMIT = 0.001 
+SQZ_LIMIT = 0.001  # Core Rule: 0.1% compression threshold
 
+# --- EXCHANGE FAILOVER PRIORITY CHAIN ---
 EXCHANGE_CHAIN = [
     {"name": "Binance", "obj": ccxt.binance({'enableRateLimit': True})},
     {"name": "OKX",     "obj": ccxt.okx({'enableRateLimit': True})},
@@ -76,11 +89,17 @@ EXCHANGE_CHAIN = [
     {"name": "GateIO",  "obj": ccxt.gateio({'enableRateLimit': True})}
 ]
 
+# ==============================================================================
+# PART 1: JEREMIAH COMPRESSION ENGINE (Creates Signals)
+# ==============================================================================
 def is_jeremiah_compressed(c, s20, s100, s200):
     all_together = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s100)/s20 <= SQZ_LIMIT)
     special_one = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s200)/s20 <= SQZ_LIMIT)
     return all_together or special_one
 
+# ==============================================================================
+# PART 2: BTC MARKET REGIME ENGINE (Explains Environment Only)
+# ==============================================================================
 def detect_market_regime(df):
     available_rows = len(df)
     if available_rows < 50: return "TRANSITIONAL", "INSUFFICIENT DATA"
@@ -119,6 +138,7 @@ def detect_market_regime(df):
 
     return "TRANSITIONAL", "MOMENTUM REBALANCING"
 
+# --- EXCHANGE FAILOVER EXECUTION LAYER ---
 def safe_fetch_ohlcv(symbol, tf, limit):
     for exchange_info in EXCHANGE_CHAIN:
         try:
@@ -181,6 +201,9 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
+    # ==============================================================================
+    # PART 3: LIQUIDITY SHIELD ENGINE (Evaluates Quality Only - Warning Only)
+    # ==============================================================================
     if curr['v'] > 0:
         curr_efficiency = curr_body / curr['v']
         historical_bodies = abs(df['c'].iloc[-21:-1] - df['o'].iloc[-21:-1])
@@ -202,16 +225,14 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
                 context_flags.append(f"<span class='badge badge-range'>IN BTC {target_macro_tf.upper()} BOX</span>")
 
     return {
-        "sqz": is_currently_sqz, "expansion": found_expansion, 
-        "dir": direction, "price": curr['c'], "status": "ok", 
-        "source": source_name, "context": " ".join(context_flags),
-        "hole": is_liquidity_hole,
-        "curr_ver": curr_efficiency,
-        "base_ver": avg_historical_efficiency
+        "sqz": is_currently_szq if 'is_currently_szq' in locals() else is_currently_sqz, 
+        "expansion": found_expansion, "dir": direction, "price": curr['c'], "status": "ok", 
+        "source": source_name, "context": " ".join(context_flags), "hole": is_liquidity_hole,
+        "curr_ver": curr_efficiency, "base_ver": avg_historical_efficiency
     }
 
 # ==============================================================================
-# UI INTERFACE DEPLOYMENT
+# UI DYNAMIC PRESENTATION LAYER
 # ==============================================================================
 
 st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
@@ -234,6 +255,7 @@ if btc_regimes:
     html_table += "</tbody></table>"
     st.markdown(html_table, unsafe_allow_html=True)
 
+# --- VISIBLE PART 3 RISK SHIELD ---
 st.markdown(f"""
     <div class="shield-box">
         🛡️ <b>PART 3 LIQUIDITY SHIELD ACTIVE</b><br>
@@ -244,10 +266,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 st.divider()
-
 st.subheader("🏹 Strategy Monitor")
 
-# LIVE LOADING SPINNER PLACEHOLDER
+# RUNTIME STATUS FEED OBJECT
 progress_bar = st.empty()
 
 meme_signals = []
@@ -255,7 +276,7 @@ bigcap_signals = []
 btc_monitored_stats = []
 
 for idx, symbol in enumerate(ALL_SYMBOLS):
-    # Update status indicator on your phone instantly so you know it's tracking
+    # Dynamic text update to completely avoid blank layouts on slower loops
     progress_bar.markdown(f"⏳ *Scanning Asset {idx+1}/25:* **{symbol}**...")
     
     tf_results = {}
@@ -271,23 +292,15 @@ for idx, symbol in enumerate(ALL_SYMBOLS):
     
     if is_mega or any(res["sqz"] or res["expansion"] for res in tf_results.values()):
         display_price = next((res["price"] for res in tf_results.values()), "N/A")
+        signal_payload = {"symbol": symbol, "price": display_price, "is_mega": is_mega, "timeframes": tf_results}
         
-        signal_payload = {
-            "symbol": symbol,
-            "price": display_price,
-            "is_mega": is_mega,
-            "timeframes": tf_results
-        }
-        
-        if symbol in MEMECOINS:
-            meme_signals.append(signal_payload)
-        else:
-            bigcap_signals.append(signal_payload)
+        if symbol in MEMECOINS: meme_signals.append(signal_payload)
+        else: bigcap_signals.append(signal_payload)
 
-# Clear scanning notification when finished processing loop sequence 
+# Safely clear out indicator view after pipeline loop finishes
 progress_bar.empty()
 
-# --- DISPLAY RENDER LOOP 1: MEMECOIN FUTURES SECTION ---
+# --- DISPLAY RENDER LOOP 1: VOLATILE MEMECOINS ---
 st.markdown('<div class="section-header header-meme">🔮 VOLATILE MEMECOIN FUTURES (15 ASSETS)</div>', unsafe_allow_html=True)
 if not meme_signals:
     st.markdown("<p class='empty-notice'>⚡ No active compressions or expansions in Memecoins.</p>", unsafe_allow_html=True)
@@ -309,7 +322,7 @@ else:
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
-# --- DISPLAY RENDER LOOP 2: INSTITUTIONAL BIG CAPS SECTION ---
+# --- DISPLAY RENDER LOOP 2: INSTITUTIONAL BIG CAPS ---
 st.markdown('<div class="section-header header-big">👑 INSTITUTIONAL BIG CAPS (10 ASSETS)</div>', unsafe_allow_html=True)
 if not bigcap_signals:
     st.markdown("<p class='empty-notice'>⭐ No active compressions or expansions in Big Caps.</p>", unsafe_allow_html=True)
@@ -331,6 +344,7 @@ else:
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
+# --- LIVE CRADLE RECON BASELINE FEED ---
 if btc_monitored_stats:
     st.markdown(f"""
         <p style="font-size: 0.8rem; color: #111111; margin-top:20px; font-weight: bold;">
@@ -339,4 +353,4 @@ if btc_monitored_stats:
     """, unsafe_allow_html=True)
 
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | SSoT V10 (Live Feed Status Mapping)")
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | SSoT V10 (Production Mobile Edition)")
