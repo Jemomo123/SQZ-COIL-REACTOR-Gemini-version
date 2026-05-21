@@ -12,14 +12,13 @@ logger = logging.getLogger(__name__)
 
 # --- MOBILE UI CONFIG ---
 st.set_page_config(page_title="Jeremiah Edge Pro", layout="centered")
-# 35 second adaptive refresh window to accommodate heavy-duty 25 coin multi-timeframe mapping securely
 st_autorefresh(interval=35000, key="datarefresh")
 
 st.markdown("""
     <style>
     .stAlert { padding: 0.8rem; border-radius: 10px; }
     .stContainer { border: 1px solid #444; padding: 12px; border-radius: 10px; margin-bottom: 12px; }
-    .status-dim { color: #888; font-size: 0.75rem; }
+    .status-dim { color: #555555; font-size: 0.8rem; font-weight: bold; }
     .regime-table { width:100%; border-collapse: collapse; margin-bottom: 15px; }
     .regime-table th, .regime-table td { padding: 8px; border: 1px solid #444; text-align: left; font-size: 0.85rem; }
     .regime-table th { background-color: #262730; }
@@ -28,24 +27,27 @@ st.markdown("""
     .badge-counter { background-color: #ef4444; color: white; }
     .badge-range { background-color: #3b82f6; color: white; }
     .shield-box { 
-        background-color: rgba(59, 130, 246, 0.1); 
-        border: 1px solid #3b82f6; 
+        background-color: rgba(59, 130, 246, 0.12); 
+        border: 2px solid #3b82f6; 
         padding: 10px; 
         border-radius: 8px; 
         margin-bottom: 15px;
         font-size: 0.85rem;
+        color: #1e3a8a;
     }
     .section-header {
-        padding: 6px 12px;
+        padding: 8px 12px;
         border-radius: 6px;
-        font-weight: bold;
-        font-size: 0.9rem;
-        margin-top: 15px;
-        margin-bottom: 10px;
+        font-weight: 900;
+        font-size: 0.95rem;
+        margin-top: 18px;
+        margin-bottom: 12px;
         letter-spacing: 0.5px;
     }
-    .header-meme { background-color: rgba(168, 85, 247, 0.15); border: 1px solid #a855f7; color: #d8b4fe; }
-    .header-big { background-color: rgba(234, 179, 8, 0.15); border: 1px solid #eab308; color: #fef08a; }
+    /* HIGH CONTRAST THEME FOR MOBILE LIGHT/DARK VIEWPORTS */
+    .header-meme { background-color: #a855f7; border: 2px solid #7e22ce; color: #ffffff; }
+    .header-big { background-color: #eab308; border: 2px solid #b45309; color: #000000; }
+    .empty-notice { color: #222222; font-weight: bold; padding: 5px 10px; font-size: 0.85rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -118,7 +120,7 @@ def detect_market_regime(df):
         return "TRENDING_UP", "CLEAN TREND"
     if (ma20_slope < 0 and curr['c'] < curr['s20'] and curr['s20'] < curr['s100'] and lower_lows and oscillating < 4):
         return "TRENDING_DOWN", "CLEAN TREND"
-    if not is_contained and abs(curr['c'] - curr['o']) > (1.5 * atr):
+    if not is_contained && abs(curr['c'] - curr['o']) > (1.5 * atr):
         if (curr['c'] > curr['o'] and ma20_slope > 0) or (curr['c'] < curr['o'] and ma20_slope < 0):
             return "RANGE_EXPANSION", "STRUCTURAL RELEASE"
     if ma20_flat or overlap_count >= 3 or oscillating >= 4:
@@ -127,7 +129,7 @@ def detect_market_regime(df):
     return "TRANSITIONAL", "MOMENTUM REBALANCING"
 
 # ==============================================================================
-# SECURE DATA ACQUISITION ENGINE (PACED RATIO GATING)
+# SECURE DATA ACQUISITION ENGINE
 # ==============================================================================
 def safe_fetch_ohlcv(symbol, tf, limit):
     for exchange_info in EXCHANGE_CHAIN:
@@ -143,7 +145,6 @@ def safe_fetch_ohlcv(symbol, tf, limit):
             df['s200'] = df['c'].rolling(200).mean()
             df = df.dropna().reset_index(drop=True)
             
-            # Anti-Hammer Padding Delay to pass structural exchange firewall checks
             time.sleep(0.04) 
             return df, name
         except Exception:
@@ -192,7 +193,7 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
-    # --- PART 3 LIQUIDITY SCAN ENGINE ---
+    # --- PART 3 SCANNER ENGINE ---
     if curr['v'] > 0:
         curr_efficiency = curr_body / curr['v']
         historical_bodies = abs(df['c'].iloc[-21:-1] - df['o'].iloc[-21:-1])
@@ -204,14 +205,14 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
 
     if found_expansion:
         if is_liquidity_hole:
-            context_flags.append("<span class='badge' style='background-color: #f59e0b; color: black; font-weight: bold;'>⚠️ LIQUIDITY HOLE: NO SPOT BID SUPPORT</span>")
+            context_flags.append("<span class='badge' style='background-color: #f59e0b; color: black; font-weight: bold;'>⚠️ LIQUIDITY HOLE</span>")
         else:
             if (direction == "BULLISH" and macro_state == "TRENDING_UP") or (direction == "BEARISH" and macro_state == "TRENDING_DOWN"):
-                context_flags.append(f"<span class='badge badge-aligned'>ALIGNED WITH BTC {target_macro_tf.upper()}</span>")
+                context_flags.append(f"<span class='badge badge-aligned'>ALIGNED BTC {target_macro_tf.upper()}</span>")
             elif macro_state in ["TRENDING_UP", "TRENDING_DOWN"]:
-                context_flags.append(f"<span class='badge badge-counter'>COUNTER-TREND TO BTC {target_macro_tf.upper()}</span>")
+                context_flags.append(f"<span class='badge badge-counter'>COUNTER BTC {target_macro_tf.upper()}</span>")
             if macro_state == "RANGING":
-                context_flags.append(f"<span class='badge badge-range'>INSIDE BTC {target_macro_tf.upper()} BOX</span>")
+                context_flags.append(f"<span class='badge badge-range'>IN BTC {target_macro_tf.upper()} BOX</span>")
 
     return {
         "sqz": is_currently_sqz, "expansion": found_expansion, 
@@ -241,7 +242,7 @@ if btc_regimes:
         if tf in btc_regimes:
             state = btc_regimes[tf]["state"]
             struct = btc_regimes[tf]["structure"]
-            color = "#10b981" if "UP" in state else "#ef4444" if "DOWN" in state else "#3b82f6" if "RANGE" in state else "#888888"
+            color = "#10b981" if "UP" in state else "#ef4444" if "DOWN" in state else "#3b82f6" if "RANGE" in state else "#555555"
             html_table += f"<tr><td><b>{tf}</b></td><td style='color:{color}; font-weight:bold;'>{state}</td><td>{struct}</td></tr>"
     html_table += "</tbody></table>"
     st.markdown(html_table, unsafe_allow_html=True)
@@ -250,8 +251,8 @@ if btc_regimes:
 st.markdown(f"""
     <div class="shield-box">
         🛡️ <b>PART 3 LIQUIDITY SHIELD ACTIVE</b><br>
-        <span style="color: #aaa; font-size: 0.8rem;">
-            Monitoring <b>10 Institutional Assets</b> & <b>15 Meme Futures Assets</b>. Candle structural efficiency check pinned to <b>1.8x Delta Limit</b>.
+        <span style="color: #333333; font-size: 0.8rem; font-weight: bold;">
+            Monitoring 10 Institutional Assets & 15 Meme Futures Assets. Pinned to 1.8x Delta Limit.
         </span>
     </div>
 """, unsafe_allow_html=True)
@@ -260,12 +261,10 @@ st.divider()
 
 st.subheader("🏹 Strategy Monitor")
 
-# Dictionary grids to organize incoming signals by category type
 meme_signals = []
 bigcap_signals = []
 btc_monitored_stats = []
 
-# Global loop sequence mapping through all 25 designated assets
 for symbol in ALL_SYMBOLS:
     tf_results = {}
     for tf in TIMEFRAMES:
@@ -281,7 +280,6 @@ for symbol in ALL_SYMBOLS:
     if is_mega or any(res["sqz"] or res["expansion"] for res in tf_results.values()):
         display_price = next((res["price"] for res in tf_results.values()), "N/A")
         
-        # Save output configuration data block
         signal_payload = {
             "symbol": symbol,
             "price": display_price,
@@ -297,7 +295,7 @@ for symbol in ALL_SYMBOLS:
 # --- DISPLAY RENDER LOOP 1: MEMECOIN FUTURES SECTION ---
 st.markdown('<div class="section-header header-meme">🔮 VOLATILE MEMECOIN FUTURES (15 ASSETS)</div>', unsafe_allow_html=True)
 if not meme_signals:
-    st.markdown("<p class='status-dim' style='padding-left:10px;'>No active compressions or expansions in Memecoins.</p>", unsafe_allow_html=True)
+    st.markdown("<p class='empty-notice'>⚡ No active compressions or expansions in Memecoins.</p>", unsafe_allow_html=True)
 else:
     for sig in meme_signals:
         with st.container():
@@ -309,17 +307,17 @@ else:
                 source_tag = f"<span class='status-dim'>[{res['source']}]</span>"
                 
                 if res["expansion"]:
-                    bg_color = "rgba(245, 158, 11, 0.12)" if res["hole"] else "rgba(168, 85, 247, 0.12)"
-                    border_color = "#f59e0b" if res["hole"] else "#a855f7"
+                    bg_color = "rgba(245, 158, 11, 0.15)" if res["hole"] else "rgba(168, 85, 247, 0.15)"
+                    border_color = "#f59e0b" if res["hole"] else "#7e22ce"
                     title_text = f"⚠️ <b>{tf} {res['dir']} HOLLOW RELEASE:</b>" if res["hole"] else f"💥 <b>{tf} {res['dir']} RELEASE:</b>"
-                    st.markdown(f'<div style="background-color: {bg_color}; padding: 12px; border-radius: 8px; border-left: 5px solid {border_color}; margin-bottom: 8px;">{title_text} Elephant Bar (1x Body) {source_tag}<br>{res["context"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="background-color: {bg_color}; padding: 12px; border-radius: 8px; border-left: 5px solid {border_color}; margin-bottom: 8px; color: #000000;">{title_text} Elephant Bar {source_tag}<br>{res["context"]}</div>', unsafe_allow_html=True)
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
 # --- DISPLAY RENDER LOOP 2: INSTITUTIONAL BIG CAPS SECTION ---
 st.markdown('<div class="section-header header-big">👑 INSTITUTIONAL BIG CAPS (10 ASSETS)</div>', unsafe_allow_html=True)
 if not bigcap_signals:
-    st.markdown("<p class='status-dim' style='padding-left:10px;'>No active compressions or expansions in Big Caps.</p>", unsafe_allow_html=True)
+    st.markdown("<p class='empty-notice'>⭐ No active compressions or expansions in Big Caps.</p>", unsafe_allow_html=True)
 else:
     for sig in bigcap_signals:
         with st.container():
@@ -331,20 +329,20 @@ else:
                 source_tag = f"<span class='status-dim'>[{res['source']}]</span>"
                 
                 if res["expansion"]:
-                    bg_color = "rgba(245, 158, 11, 0.12)" if res["hole"] else "rgba(16, 185, 129, 0.15)"
+                    bg_color = "rgba(245, 158, 11, 0.15)" if res["hole"] else "rgba(16, 185, 129, 0.15)"
                     border_color = "#f59e0b" if res["hole"] else "#10b981"
                     title_text = f"⚠️ <b>{tf} {res['dir']} HOLLOW RELEASE:</b>" if res["hole"] else f"💥 <b>{tf} {res['dir']} RELEASE:</b>"
-                    st.markdown(f'<div style="background-color: {bg_color}; padding: 12px; border-radius: 8px; border-left: 5px solid {border_color}; margin-bottom: 8px;">{title_text} Elephant Bar (1x Body) {source_tag}<br>{res["context"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="background-color: {bg_color}; padding: 12px; border-radius: 8px; border-left: 5px solid {border_color}; margin-bottom: 8px; color: #000000;">{title_text} Elephant Bar {source_tag}<br>{res["context"]}</div>', unsafe_allow_html=True)
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
 # --- LIVE RECON FEED DATA ---
 if btc_monitored_stats:
     st.markdown(f"""
-        <p style="font-size: 0.75rem; color: #777; margin-top:20px;">
-            📊 <b>Live Book Efficiency Feed</b> (BTC 3m) | Current Run: {btc_monitored_stats[0]:.5f} vs Hard Shield Target: {(btc_monitored_stats[1]*1.8):.5f}
+        <p style="font-size: 0.8rem; color: #111111; margin-top:20px; font-weight: bold;">
+            📊 Live Book Feed (BTC 3m) | Run: {btc_monitored_stats[0]:.5f} vs Shield Target: {(btc_monitored_stats[1]*1.8):.5f}
         </p>
     """, unsafe_allow_html=True)
 
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | SSoT V8 (Bifurcated Watchlist Architecture)")
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | SSoT V9 (High Contrast Mobile Interface)")
