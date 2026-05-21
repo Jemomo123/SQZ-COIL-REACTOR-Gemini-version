@@ -18,12 +18,16 @@ st_autorefresh(interval=35000, key="datarefresh")
 # JEREMIAH EDGE SSoT V10 ARCHITECTURE BLUEPRINT
 # ==============================================================================
 # PART 1 = JEREMIAH COMPRESSION ENGINE (Creates Signals)
-#   - Detects SQZ, MEGA SQZ, and Elephant Bar releases at a 0.1% threshold.
+#   - Detects SQZ, MEGA SQZ, and Elephant Bar releases at 0.2% precision band.
 # PART 2 = BTC MARKET REGIME ENGINE (Explains Environment)
 #   - Tracks macro trend (15m, 1h, 4h). Never blocks or alters Part 1.
 # PART 3 = LIQUIDITY SHIELD ENGINE (Evaluates Move Quality)
-#   - Flags hollow liquidation cascades / thin books. Warning only.
+#   - Advanced Derivatives Core: Tracks Volume, OI, Funding, and Liquidations.
 # ==============================================================================
+
+# --- ANTI-SPAM SIGNAL MEMORY ---
+if "SIGNAL_MEMORY" not in st.session_state:
+    st.session_state["SIGNAL_MEMORY"] = {}
 
 st.markdown("""
     <style>
@@ -55,7 +59,6 @@ st.markdown("""
         margin-bottom: 12px;
         letter-spacing: 0.5px;
     }
-    /* HIGH CONTRAST THEME FOR SUNLIGHT MOBILE SCANNERS */
     .header-meme { background-color: #a855f7; border: 2px solid #7e22ce; color: #ffffff; }
     .header-big { background-color: #eab308; border: 2px solid #b45309; color: #000000; }
     .empty-notice { color: #222222; font-weight: bold; padding: 5px 10px; font-size: 0.85rem; }
@@ -79,23 +82,24 @@ MEMECOINS = [
 ALL_SYMBOLS = BIG_CAPS + MEMECOINS
 TIMEFRAMES = ['3m', '5m', '15m'] 
 REGIME_TIMEFRAMES = ['15m', '1h', '4h']
-SQZ_LIMIT = 0.001  # Core Rule: 0.1% compression threshold
 
-# --- EXCHANGE FAILOVER PRIORITY CHAIN ---
+# Calibrated maximum precision band limit
+SQZ_LIMIT = 0.002  
+
+# --- HARDFOCUSED EXCHANGE PERPETUAL FUTURES LAYER ---
 EXCHANGE_CHAIN = [
-    {"name": "Binance", "obj": ccxt.binance({'enableRateLimit': True})},
-    {"name": "OKX",     "obj": ccxt.okx({'enableRateLimit': True})},
-    {"name": "MEXC",    "obj": ccxt.mexc({'enableRateLimit': True})},
-    {"name": "GateIO",  "obj": ccxt.gateio({'enableRateLimit': True})}
+    {"name": "Binance Futures", "obj": ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'future'}})},
+    {"name": "OKX Futures",     "obj": ccxt.okx({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})},
+    {"name": "MEXC Futures",    "obj": ccxt.mexc({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})},
+    {"name": "GateIO Futures",  "obj": ccxt.gateio({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})}
 ]
 
 # ==============================================================================
 # PART 1: JEREMIAH COMPRESSION ENGINE (Creates Signals)
 # ==============================================================================
-def is_jeremiah_compressed(c, s20, s100, s200):
+def is_jeremiah_compressed(c, s20, s100):
     all_together = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s100)/s20 <= SQZ_LIMIT)
-    special_one = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s200)/s20 <= SQZ_LIMIT)
-    return all_together or special_one
+    return all_together
 
 # ==============================================================================
 # PART 2: BTC MARKET REGIME ENGINE (Explains Environment Only)
@@ -144,13 +148,12 @@ def safe_fetch_ohlcv(symbol, tf, limit):
         try:
             ex_obj = exchange_info["obj"]
             name = exchange_info["name"]
-            fetch_symbol = symbol if name != "OKX" else symbol.replace("/", "-")
+            fetch_symbol = symbol if "OKX" not in name else symbol.replace("/", "-")
             
             bars = ex_obj.fetch_ohlcv(fetch_symbol, timeframe=tf, limit=limit)
             df = pd.DataFrame(bars, columns=['ts', 'o', 'h', 'l', 'c', 'v'])
             df['s20'] = df['c'].rolling(20).mean()
             df['s100'] = df['c'].rolling(100).mean()
-            df['s200'] = df['c'].rolling(200).mean()
             df = df.dropna().reset_index(drop=True)
             
             time.sleep(0.04) 
@@ -159,8 +162,56 @@ def safe_fetch_ohlcv(symbol, tf, limit):
             continue
     return None, None
 
+# ==============================================================================
+# PART 3: MICROSTRUCTURE LIQUIDITY SHIELD INGESTION UTILITIES
+# ==============================================================================
+def safe_fetch_open_interest(exchange, symbol):
+    try:
+        oi_data = exchange.fetch_open_interest(symbol)
+        if isinstance(oi_data, dict):
+            return oi_data.get('openInterestAmount', "N/A")
+        return oi_data
+    except Exception:
+        return "N/A"
+
+def safe_fetch_funding_rate(exchange, symbol):
+    try:
+        data = exchange.fetch_funding_rate(symbol)
+        if isinstance(data, dict):
+            rate = data.get('fundingRate', 0)
+            return f"{rate * 100:.4f}%" if rate is not None else "N/A"
+        return "N/A"
+    except Exception:
+        return "N/A"
+
+def safe_fetch_liquidations(exchange, symbol):
+    try:
+        liq_data = exchange.fetch_liquidations(symbol, limit=5)
+        if liq_data and len(liq_data) > 0:
+            total_liq = sum(float(l.get('amount', 0)) for l in liq_data if l.get('amount'))
+            return f"${total_liq:,.0f}"
+        return "$0"
+    except Exception:
+        return "$0"
+
+def safe_fetch_long_short_ratio(exchange, symbol):
+    try:
+        if exchange.id == 'binance':
+            market_symbol = symbol.replace("/", "")
+            res = exchange.fapiPublicGetGlobalLongShortAccountRatio({'symbol': market_symbol, 'period': '5m'})
+            if res and len(res) > 0:
+                return f"{float(res[-1].get('longAccount', 0))*100:.1f}% L"
+        elif exchange.id == 'okx':
+            market_symbol = symbol.replace("/", "-")
+            res = exchange.publicGetMarketLongShortPositionRatio({'instId': market_symbol})
+            if res and 'data' in res:
+                return f"{float(res['data'][0].get('ratio', 1))*50:.1f}% L"
+        return "N/A"
+    except Exception:
+        return "N/A"
+
 def get_timeframe_signal(symbol, tf, btc_regimes):
-    df, source_name = safe_fetch_ohlcv(symbol, tf, limit=210) 
+    df, source_name = safe_fetch_ohlcv(symbol, tf, limit=150) 
     if df is None or len(df) < 25:
         return {"status": "fail"}
         
@@ -168,7 +219,7 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
     wobble_count = 0
     for i in range(len(df)-2, 0, -1):
         row = df.iloc[i]
-        if is_jeremiah_compressed(row['c'], row['s20'], row['s100'], row['s200']):
+        if is_jeremiah_compressed(row['c'], row['s20'], row['s100']):
             cluster_candles.append(row)
             wobble_count = 0 
         else:
@@ -177,7 +228,7 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             
     has_valid_cluster = len(cluster_candles) >= 1
     curr = df.iloc[-1]
-    is_currently_sqz = is_jeremiah_compressed(curr['c'], curr['s20'], curr['s100'], curr['s200'])
+    is_currently_sqz = is_jeremiah_compressed(curr['c'], curr['s20'], curr['s100'])
 
     found_expansion = False
     direction = None
@@ -191,6 +242,22 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
     macro_state = macro_data.get("state", "TRANSITIONAL")
 
     curr_body = abs(curr['c'] - curr['o'])
+
+    # --- FULL LIVE METRICS ENGINE PIPELINE ---
+    current_oi = "N/A"
+    current_funding = "N/A"
+    current_liq = "$0"
+    current_ls_ratio = "N/A"
+
+    try:
+        primary_exchange = EXCHANGE_CHAIN[0]["obj"]
+        current_oi = safe_fetch_open_interest(primary_exchange, symbol)
+        current_funding = safe_fetch_funding_rate(primary_exchange, symbol)
+        current_liq = safe_fetch_liquidations(primary_exchange, symbol)
+        current_ls_ratio = safe_fetch_long_short_ratio(primary_exchange, symbol)
+    except Exception:
+        pass
+
     if has_valid_cluster and not is_currently_sqz:
         is_moving = abs(curr['c'] - curr['s20'])/curr['c'] > SQZ_LIMIT
         avg_cluster_body = sum(abs(row['c'] - row['o']) for row in cluster_candles) / len(cluster_candles)
@@ -201,9 +268,7 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
-    # ==============================================================================
-    # PART 3: LIQUIDITY SHIELD ENGINE (Evaluates Quality Only - Warning Only)
-    # ==============================================================================
+    # --- LIQUIDITY SHIELD CALCULATIONS ---
     if curr['v'] > 0:
         curr_efficiency = curr_body / curr['v']
         historical_bodies = abs(df['c'].iloc[-21:-1] - df['o'].iloc[-21:-1])
@@ -224,11 +289,24 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             if macro_state == "RANGING":
                 context_flags.append(f"<span class='badge badge-range'>IN BTC {target_macro_tf.upper()} BOX</span>")
 
+    # --- ANTI-SPAM INTERCEPT ---
+    signal_key = f"{symbol}_{tf}"
+    if found_expansion:
+        last_time = st.session_state["SIGNAL_MEMORY"].get(signal_key, 0)
+        if time.time() - last_time < 180:
+            found_expansion = False  
+        else:
+            st.session_state["SIGNAL_MEMORY"][signal_key] = time.time()
+
     return {
-        "sqz": is_currently_szq if 'is_currently_szq' in locals() else is_currently_sqz, 
+        "sqz": is_currently_sqz, 
         "expansion": found_expansion, "dir": direction, "price": curr['c'], "status": "ok", 
         "source": source_name, "context": " ".join(context_flags), "hole": is_liquidity_hole,
-        "curr_ver": curr_efficiency, "base_ver": avg_historical_efficiency
+        "curr_ver": curr_efficiency, "base_ver": avg_historical_efficiency,
+        "oi": current_oi,
+        "funding": current_funding,
+        "liq": current_liq,
+        "ls_ratio": current_ls_ratio
     }
 
 # ==============================================================================
@@ -239,7 +317,7 @@ st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
 btc_regimes = {}
 
 for tf in REGIME_TIMEFRAMES:
-    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=600)
+    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=200)
     if btc_df is not None:
         state, structure = detect_market_regime(btc_df)
         btc_regimes[tf] = {"state": state, "structure": structure}
@@ -255,12 +333,11 @@ if btc_regimes:
     html_table += "</tbody></table>"
     st.markdown(html_table, unsafe_allow_html=True)
 
-# --- VISIBLE PART 3 RISK SHIELD ---
 st.markdown(f"""
     <div class="shield-box">
         🛡️ <b>PART 3 LIQUIDITY SHIELD ACTIVE</b><br>
         <span style="color: #333333; font-size: 0.8rem; font-weight: bold;">
-            Monitoring 10 Institutional Assets & 15 Meme Futures Assets. Pinned to 1.8x Delta Limit.
+            Monitoring 10 Institutional Assets & 15 Meme Futures Assets. Complete Derivatives Context Loaded.
         </span>
     </div>
 """, unsafe_allow_html=True)
@@ -268,7 +345,6 @@ st.markdown(f"""
 st.divider()
 st.subheader("🏹 Strategy Monitor")
 
-# RUNTIME STATUS FEED OBJECT
 progress_bar = st.empty()
 
 meme_signals = []
@@ -276,7 +352,6 @@ bigcap_signals = []
 btc_monitored_stats = []
 
 for idx, symbol in enumerate(ALL_SYMBOLS):
-    # Dynamic text update to completely avoid blank layouts on slower loops
     progress_bar.markdown(f"⏳ *Scanning Asset {idx+1}/25:* **{symbol}**...")
     
     tf_results = {}
@@ -297,7 +372,6 @@ for idx, symbol in enumerate(ALL_SYMBOLS):
         if symbol in MEMECOINS: meme_signals.append(signal_payload)
         else: bigcap_signals.append(signal_payload)
 
-# Safely clear out indicator view after pipeline loop finishes
 progress_bar.empty()
 
 # --- DISPLAY RENDER LOOP 1: VOLATILE MEMECOINS ---
@@ -318,7 +392,14 @@ else:
                     bg_color = "rgba(245, 158, 11, 0.15)" if res["hole"] else "rgba(168, 85, 247, 0.15)"
                     border_color = "#f59e0b" if res["hole"] else "#7e22ce"
                     title_text = f"⚠️ <b>{tf} {res['dir']} HOLLOW RELEASE:</b>" if res["hole"] else f"💥 <b>{tf} {res['dir']} RELEASE:</b>"
-                    st.markdown(f'<div style="background-color: {bg_color}; padding: 12px; border-radius: 8px; border-left: 5px solid {border_color}; margin-bottom: 8px; color: #000000;">{title_text} Elephant Bar {source_tag}<br>{res["context"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'''
+                        <div style="background-color: {bg_color}; padding: 12px; border-radius: 8px; border-left: 5px solid {border_color}; margin-bottom: 8px; color: #000000; font-size: 0.88rem;">
+                            {title_text} Elephant Bar {source_tag}
+                            <br>{res["context"]}
+                            <br><b>OI:</b> {res["oi"]} | <b>Funding:</b> {res["funding"]}
+                            <br><b>Liquidations:</b> {res["liq"]} | <b>L/S Accounts:</b> {res["ls_ratio"]}
+                        </div>
+                    ''', unsafe_allow_html=True)
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
@@ -340,17 +421,15 @@ else:
                     bg_color = "rgba(245, 158, 11, 0.15)" if res["hole"] else "rgba(16, 185, 129, 0.15)"
                     border_color = "#f59e0b" if res["hole"] else "#10b981"
                     title_text = f"⚠️ <b>{tf} {res['dir']} HOLLOW RELEASE:</b>" if res["hole"] else f"💥 <b>{tf} {res['dir']} RELEASE:</b>"
-                    st.markdown(f'<div style="background-color: {bg_color}; padding: 12px; border-radius: 8px; border-left: 5px solid {border_color}; margin-bottom: 8px; color: #000000;">{title_text} Elephant Bar {source_tag}<br>{res["context"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'''
+                        <div style="background-color: {bg_color}; padding: 12px; border-radius: 8px; border-left: 5px solid {border_color}; margin-bottom: 8px; color: #000000; font-size: 0.88rem;">
+                            {title_text} Elephant Bar {source_tag}
+                            <br>{res["context"]}
+                            <br><b>OI:</b> {res["oi"]} | <b>Funding:</b> {res["funding"]}
+                            <br><b>Liquidations:</b> {res["liq"]} | <b>L/S Accounts:</b> {res["ls_ratio"]}
+                        </div>
+                    ''', unsafe_allow_html=True)
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
-# --- LIVE CRADLE RECON BASELINE FEED ---
-if btc_monitored_stats:
-    st.markdown(f"""
-        <p style="font-size: 0.8rem; color: #111111; margin-top:20px; font-weight: bold;">
-            📊 Live Book Feed (BTC 3m) | Run: {btc_monitored_stats[0]:.5f} vs Shield Target: {(btc_monitored_stats[1]*1.8):.5f}
-        </p>
-    """, unsafe_allow_html=True)
-
-st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | SSoT V10 (Production Mobile Edition)")
+if btc_monitored_s
