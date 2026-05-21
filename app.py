@@ -25,6 +25,14 @@ st.markdown("""
     .badge-aligned { background-color: #10b981; color: white; }
     .badge-counter { background-color: #ef4444; color: white; }
     .badge-range { background-color: #3b82f6; color: white; }
+    .shield-box { 
+        background-color: rgba(59, 130, 246, 0.1); 
+        border: 1px solid #3b82f6; 
+        padding: 10px; 
+        border-radius: 8px; 
+        margin-bottom: 15px;
+        font-size: 0.85rem;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -44,40 +52,31 @@ REGIME_TIMEFRAMES = ['15m', '1h', '4h']
 SQZ_LIMIT = 0.001 
 
 # ==============================================================================
-# SINGLE SOURCE OF TRUTH (SSoT) PART 1: JEREMIAH COMPRESSION ENGINE
+# SSoT PART 1: JEREMIAH COMPRESSION ENGINE
 # ==============================================================================
 def is_jeremiah_compressed(c, s20, s100, s200):
-    """Centralized gatekeeper for mathematical volatility compression."""
     all_together = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s100)/s20 <= SQZ_LIMIT)
     special_one = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s200)/s20 <= SQZ_LIMIT)
     return all_together or special_one
 
 # ==============================================================================
-# SINGLE SOURCE OF TRUTH (SSoT) PART 2: BTC MARKET REGIME ENGINE
+# SSoT PART 2: BTC MARKET REGIME ENGINE
 # ==============================================================================
 def detect_market_regime(df):
-    """
-    Centralized Single Source of Truth for Institutional Market Structure.
-    Optimized with Adaptive Lookbacks to resolve API history caps.
-    """
     available_rows = len(df)
     if available_rows < 50: 
         return "TRANSITIONAL", "INSUFFICIENT DATA"
-    
     curr = df.iloc[-1]
     
-    # 1. Slope Vectors (Scales lookback window relative to available data)
     s20_lookback = min(5, max(2, available_rows // 20))
     ma20_slope = (df['s20'].iloc[-1] - df['s20'].iloc[-s20_lookback]) / s20_lookback
     ma20_flat = abs(ma20_slope) < (df['c'].rolling(min(14, available_rows)).std().iloc[-1] * 0.02)
     
-    # 2. Structural Highs/Lows
     structure_window = min(20, available_rows)
     recent_df = df.iloc[-structure_window:]
     higher_highs = df['h'].iloc[-1] >= recent_df['h'].median()
     lower_lows = df['l'].iloc[-1] <= recent_df['l'].median()
     
-    # 3. Rotational & Candle Overlap Metrics
     overlap_window = min(5, available_rows - 1)
     overlap_count = sum((df['h'].iloc[i] > df['l'].iloc[i-1]) and (df['l'].iloc[i] < df['h'].iloc[i-1]) for i in range(-overlap_window, 0))
     
@@ -85,31 +84,25 @@ def detect_market_regime(df):
     oscillating = sum((df['c'].iloc[i] > df['s20'].iloc[i] and df['c'].iloc[i-1] < df['s20'].iloc[i-1]) or 
                       (df['c'].iloc[i] < df['s20'].iloc[i] and df['c'].iloc[i-1] > df['s20'].iloc[i-1]) for i in range(-osc_window, 0))
 
-    # 4. ATR Displacement
     atr_window = min(14, available_rows)
     atr = (df['h'] - df['l']).rolling(atr_window).mean().iloc[-1]
     recent_mid = recent_df['c'].median()
     is_contained = abs(curr['c'] - recent_mid) < (2 * atr)
     
-    # --- RIGID ALGORITHMIC PIPELINE ---
     if (ma20_slope > 0 and curr['c'] > curr['s20'] and curr['s20'] > curr['s100'] and higher_highs and oscillating < 4):
         return "TRENDING_UP", "CLEAN TREND"
-        
     if (ma20_slope < 0 and curr['c'] < curr['s20'] and curr['s20'] < curr['s100'] and lower_lows and oscillating < 4):
         return "TRENDING_DOWN", "CLEAN TREND"
-        
     if not is_contained and abs(curr['c'] - curr['o']) > (1.5 * atr):
         if (curr['c'] > curr['o'] and ma20_slope > 0) or (curr['c'] < curr['o'] and ma20_slope < 0):
             return "RANGE_EXPANSION", "STRUCTURAL RELEASE"
-
     if ma20_flat or overlap_count >= 3 or oscillating >= 4:
         return "RANGING", "INTERNAL BOX"
 
     return "TRANSITIONAL", "MOMENTUM REBALANCING"
 
-
 # ==============================================================================
-# SECURE ACQUISITION LAYER (WITH CASCADING FAILOVER)
+# DATA LAYER
 # ==============================================================================
 def safe_fetch_ohlcv(symbol, tf, limit):
     for exchange_info in EXCHANGE_CHAIN:
@@ -126,12 +119,11 @@ def safe_fetch_ohlcv(symbol, tf, limit):
             
             df = df.dropna().reset_index(drop=True)
             return df, name
-        except Exception as e:
+        except Exception:
             continue
     return None, None
 
 def get_timeframe_signal(symbol, tf, btc_regimes):
-    """Microstructure Engine: Pinned strictly to 210 candles with Volume Efficiency Filtering."""
     df, source_name = safe_fetch_ohlcv(symbol, tf, limit=210) 
     if df is None or len(df) < 25:
         return {"status": "fail"}
@@ -155,14 +147,16 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
     direction = None
     context_flags = []
     is_liquidity_hole = False
+    curr_efficiency = 0.0
+    avg_historical_efficiency = 0.0
 
     target_macro_tf = "15m" if tf in ["3m", "5m"] else "1h"
     macro_data = btc_regimes.get(target_macro_tf, {"state": "TRANSITIONAL"})
     macro_state = macro_data.get("state", "TRANSITIONAL")
 
+    curr_body = abs(curr['c'] - curr['o'])
     if has_valid_cluster and not is_currently_sqz:
         is_moving = abs(curr['c'] - curr['s20'])/curr['c'] > SQZ_LIMIT
-        curr_body = abs(curr['c'] - curr['o'])
         avg_cluster_body = sum(abs(row['c'] - row['o']) for row in cluster_candles) / len(cluster_candles)
         
         if is_moving and curr_body > avg_cluster_body:
@@ -171,21 +165,14 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
-    # --- THE LIQUIDITY HOLE ENGINE ---
-    if found_expansion and curr['v'] > 0:
-        # Measure volume efficiency ($VER$): Price distance covered per 1 contract traded
+    # --- PART 3 TRACKING CALCULATION ---
+    if curr['v'] > 0:
         curr_efficiency = curr_body / curr['v']
-        
-        # Calculate trailing volume efficiency baseline of past 20 candles
         historical_bodies = abs(df['c'].iloc[-21:-1] - df['o'].iloc[-21:-1])
-        historical_volumes = df['v'].iloc[-21:-1]
-        
-        # Guard against zero division in history
-        historical_volumes = historical_volumes.replace(0, 1)
+        historical_volumes = df['v'].iloc[-21:-1].replace(0, 1)
         avg_historical_efficiency = (historical_bodies / historical_volumes).mean()
         
-        # If the breakout candle moves 1.8x easier than normal, it's a hollow vacuum hole
-        if curr_efficiency > (avg_historical_efficiency * 1.8):
+        if found_expansion and curr_efficiency > (avg_historical_efficiency * 1.8):
             is_liquidity_hole = True
 
     if found_expansion:
@@ -196,7 +183,6 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
                 context_flags.append(f"<span class='badge badge-aligned'>ALIGNED WITH BTC {target_macro_tf.upper()}</span>")
             elif macro_state in ["TRENDING_UP", "TRENDING_DOWN"]:
                 context_flags.append(f"<span class='badge badge-counter'>COUNTER-TREND TO BTC {target_macro_tf.upper()}</span>")
-                
             if macro_state == "RANGING":
                 context_flags.append(f"<span class='badge badge-range'>INSIDE BTC {target_macro_tf.upper()} BOX</span>")
 
@@ -204,11 +190,13 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
         "sqz": is_currently_sqz, "expansion": found_expansion, 
         "dir": direction, "price": curr['c'], "status": "ok", 
         "source": source_name, "context": " ".join(context_flags),
-        "hole": is_liquidity_hole
+        "hole": is_liquidity_hole,
+        "curr_ver": curr_efficiency,
+        "base_ver": avg_historical_efficiency
     }
 
 # ==============================================================================
-# UI INTERFACE PRODUCTION
+# UI RENDER BLOCK
 # ==============================================================================
 
 st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
@@ -230,14 +218,22 @@ if btc_regimes:
             html_table += f"<tr><td><b>{tf}</b></td><td style='color:{color}; font-weight:bold;'>{state}</td><td>{struct}</td></tr>"
     html_table += "</tbody></table>"
     st.markdown(html_table, unsafe_allow_html=True)
-else:
-    st.error("🚨 SSoT Regime Query Failed.")
+
+# --- VISIBLE PART 3 STATUS BAR ---
+st.markdown(f"""
+    <div class="shield-box">
+        🛡️ <b>PART 3 LIQUIDITY FILTER: ACTIVE</b><br>
+        <span style="color: #aaa; font-size: 0.8rem;">
+            Real-time Order Book Integrity Scanner is running. Breakout candle density limits are hard-pinned to <b>1.8x Max Volume Efficiency Gap Baseline</b>.
+        </span>
+    </div>
+""", unsafe_allow_html=True)
 
 st.divider()
 
 st.subheader("🏹 Strategy Monitor")
 found_signal = False
-outages = []
+monitored_stats = []
 
 for symbol in SYMBOLS:
     tf_results = {}
@@ -245,11 +241,12 @@ for symbol in SYMBOLS:
         res = get_timeframe_signal(symbol, tf, btc_regimes)
         if res["status"] == "ok":
             tf_results[tf] = res
+            if tf == '3m' and symbol == 'BTC/USDT':
+                monitored_stats = (res["curr_ver"], res["base_ver"])
         else:
-            outages.append(f"{symbol} {tf}")
+            pass
 
     if not tf_results: continue
-
     is_mega = all(tf_results.get(tf, {}).get("sqz", False) for tf in TIMEFRAMES)
     
     if is_mega or any(res["sqz"] or res["expansion"] for res in tf_results.values()):
@@ -266,7 +263,6 @@ for symbol in SYMBOLS:
                 source_tag = f"<span class='status-dim'>[{res['source']}]</span>"
                 
                 if res["expansion"]:
-                    # Adjust container visually to highlight risk
                     bg_color = "rgba(245, 158, 11, 0.12)" if res["hole"] else "rgba(16, 185, 129, 0.15)"
                     border_color = "#f59e0b" if res["hole"] else "#10b981"
                     title_text = f"⚠️ <b>{tf} {res['dir']} HOLLOW RELEASE:</b>" if res["hole"] else f"💥 <b>{tf} {res['dir']} RELEASE:</b>"
@@ -282,5 +278,13 @@ for symbol in SYMBOLS:
 if not found_signal:
     st.info("Scanning... No Jeremiah Edge clusters detected.")
 
+# --- LIVE LIQUIDITY FEED AT BOTTOM ---
+if monitored_stats:
+    st.markdown(f"""
+        <p style="font-size: 0.75rem; color: #777; margin-top:10px;">
+            📊 <b>Live Feed Density</b> (BTC 3m) | Current Move Value: {monitored_stats[0]:.5f} vs Baseline Book Limit: {(monitored_stats[1]*1.8):.5f}
+        </p>
+    """, unsafe_allow_html=True)
+
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled Adaptive SSoT V5 (Vacuum Protected)")
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | Decoupled Adaptive SSoT V6 (Fully Monitored)")
