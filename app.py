@@ -44,7 +44,6 @@ st.markdown("""
         margin-bottom: 12px;
         letter-spacing: 0.5px;
     }
-    /* HIGH CONTRAST SOLID THEME FOR CLEAR SUNLIGHT READING */
     .header-meme { background-color: #a855f7; border: 2px solid #7e22ce; color: #ffffff; }
     .header-big { background-color: #eab308; border: 2px solid #b45309; color: #000000; }
     .empty-notice { color: #222222; font-weight: bold; padding: 5px 10px; font-size: 0.85rem; }
@@ -52,14 +51,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🏹 JEREMIAH EDGE PRO")
-
-# --- CENTRALIZED CLUSTER ---
-EXCHANGE_CHAIN = [
-    {"name": "Binance", "obj": ccxt.binance({'enableRateLimit': True})},
-    {"name": "OKX",     "obj": ccxt.okx({'enableRateLimit': True})},
-    {"name": "MEXC",    "obj": ccxt.mexc({'enableRateLimit': True})},
-    {"name": "GateIO",  "obj": ccxt.gateio({'enableRateLimit': True})}
-]
 
 # --- BIFURCATED WATCHLIST STRUCTURE ---
 BIG_CAPS = [
@@ -78,21 +69,21 @@ TIMEFRAMES = ['3m', '5m', '15m']
 REGIME_TIMEFRAMES = ['15m', '1h', '4h']
 SQZ_LIMIT = 0.001 
 
-# ==============================================================================
-# SSoT PART 1: JEREMIAH COMPRESSION ENGINE
-# ==============================================================================
+EXCHANGE_CHAIN = [
+    {"name": "Binance", "obj": ccxt.binance({'enableRateLimit': True})},
+    {"name": "OKX",     "obj": ccxt.okx({'enableRateLimit': True})},
+    {"name": "MEXC",    "obj": ccxt.mexc({'enableRateLimit': True})},
+    {"name": "GateIO",  "obj": ccxt.gateio({'enableRateLimit': True})}
+]
+
 def is_jeremiah_compressed(c, s20, s100, s200):
     all_together = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s100)/s20 <= SQZ_LIMIT)
     special_one = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s200)/s20 <= SQZ_LIMIT)
     return all_together or special_one
 
-# ==============================================================================
-# SSoT PART 2: BTC MARKET REGIME ENGINE
-# ==============================================================================
 def detect_market_regime(df):
     available_rows = len(df)
-    if available_rows < 50: 
-        return "TRANSITIONAL", "INSUFFICIENT DATA"
+    if available_rows < 50: return "TRANSITIONAL", "INSUFFICIENT DATA"
     curr = df.iloc[-1]
     
     s20_lookback = min(5, max(2, available_rows // 20))
@@ -120,7 +111,6 @@ def detect_market_regime(df):
         return "TRENDING_UP", "CLEAN TREND"
     if (ma20_slope < 0 and curr['c'] < curr['s20'] and curr['s20'] < curr['s100'] and lower_lows and oscillating < 4):
         return "TRENDING_DOWN", "CLEAN TREND"
-    # FIXED SYNTAX HERE: Changed '&&' to Python syntax 'and'
     if not is_contained and abs(curr['c'] - curr['o']) > (1.5 * atr):
         if (curr['c'] > curr['o'] and ma20_slope > 0) or (curr['c'] < curr['o'] and ma20_slope < 0):
             return "RANGE_EXPANSION", "STRUCTURAL RELEASE"
@@ -129,9 +119,6 @@ def detect_market_regime(df):
 
     return "TRANSITIONAL", "MOMENTUM REBALANCING"
 
-# ==============================================================================
-# SECURE DATA ACQUISITION ENGINE
-# ==============================================================================
 def safe_fetch_ohlcv(symbol, tf, limit):
     for exchange_info in EXCHANGE_CHAIN:
         try:
@@ -194,7 +181,6 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
-    # --- PART 3 SCANNER ENGINE ---
     if curr['v'] > 0:
         curr_efficiency = curr_body / curr['v']
         historical_bodies = abs(df['c'].iloc[-21:-1] - df['o'].iloc[-21:-1])
@@ -248,7 +234,6 @@ if btc_regimes:
     html_table += "</tbody></table>"
     st.markdown(html_table, unsafe_allow_html=True)
 
-# --- VISIBLE PART 3 SHIELD BADGE ---
 st.markdown(f"""
     <div class="shield-box">
         🛡️ <b>PART 3 LIQUIDITY SHIELD ACTIVE</b><br>
@@ -262,11 +247,17 @@ st.divider()
 
 st.subheader("🏹 Strategy Monitor")
 
+# LIVE LOADING SPINNER PLACEHOLDER
+progress_bar = st.empty()
+
 meme_signals = []
 bigcap_signals = []
 btc_monitored_stats = []
 
-for symbol in ALL_SYMBOLS:
+for idx, symbol in enumerate(ALL_SYMBOLS):
+    # Update status indicator on your phone instantly so you know it's tracking
+    progress_bar.markdown(f"⏳ *Scanning Asset {idx+1}/25:* **{symbol}**...")
+    
     tf_results = {}
     for tf in TIMEFRAMES:
         res = get_timeframe_signal(symbol, tf, btc_regimes)
@@ -292,6 +283,9 @@ for symbol in ALL_SYMBOLS:
             meme_signals.append(signal_payload)
         else:
             bigcap_signals.append(signal_payload)
+
+# Clear scanning notification when finished processing loop sequence 
+progress_bar.empty()
 
 # --- DISPLAY RENDER LOOP 1: MEMECOIN FUTURES SECTION ---
 st.markdown('<div class="section-header header-meme">🔮 VOLATILE MEMECOIN FUTURES (15 ASSETS)</div>', unsafe_allow_html=True)
@@ -337,7 +331,6 @@ else:
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
-# --- LIVE RECON FEED DATA ---
 if btc_monitored_stats:
     st.markdown(f"""
         <p style="font-size: 0.8rem; color: #111111; margin-top:20px; font-weight: bold;">
@@ -346,4 +339,4 @@ if btc_monitored_stats:
     """, unsafe_allow_html=True)
 
 st.divider()
-st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | SSoT V9 (High Contrast Mobile Interface)")
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | SSoT V10 (Live Feed Status Mapping)")
