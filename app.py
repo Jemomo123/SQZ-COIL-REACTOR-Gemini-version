@@ -44,7 +44,7 @@ st.markdown("""
         margin-bottom: 12px;
         letter-spacing: 0.5px;
     }
-    /* HIGH CONTRAST THEME FOR MOBILE LIGHT/DARK VIEWPORTS */
+    /* HIGH CONTRAST SOLID THEME FOR CLEAR SUNLIGHT READING */
     .header-meme { background-color: #a855f7; border: 2px solid #7e22ce; color: #ffffff; }
     .header-big { background-color: #eab308; border: 2px solid #b45309; color: #000000; }
     .empty-notice { color: #222222; font-weight: bold; padding: 5px 10px; font-size: 0.85rem; }
@@ -120,7 +120,8 @@ def detect_market_regime(df):
         return "TRENDING_UP", "CLEAN TREND"
     if (ma20_slope < 0 and curr['c'] < curr['s20'] and curr['s20'] < curr['s100'] and lower_lows and oscillating < 4):
         return "TRENDING_DOWN", "CLEAN TREND"
-    if not is_contained && abs(curr['c'] - curr['o']) > (1.5 * atr):
+    # FIXED SYNTAX HERE: Changed '&&' to Python syntax 'and'
+    if not is_contained and abs(curr['c'] - curr['o']) > (1.5 * atr):
         if (curr['c'] > curr['o'] and ma20_slope > 0) or (curr['c'] < curr['o'] and ma20_slope < 0):
             return "RANGE_EXPANSION", "STRUCTURAL RELEASE"
     if ma20_flat or overlap_count >= 3 or oscillating >= 4:
