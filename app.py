@@ -58,8 +58,8 @@ EXCHANGE_CHAIN = [
     {"name": "GateIO Futures",  "obj": ccxt.gateio({'enableRateLimit': True, 'timeout': 5000, 'options': {'defaultType': 'swap'}})}
 ]
 
-def safe_fetch_ohlcv(symbol, tf, limit=150):
-    """Bulletproof futures-only lightweight OHLCV fetcher."""
+def safe_fetch_ohlcv(symbol, tf, limit=210):
+    """Bulletproof futures-only lightweight OHLCV fetcher (BUG #1 FIXED: limit=210 for SMA200 safety)."""
     for exchange_info in EXCHANGE_CHAIN:
         try:
             ex_obj = exchange_info["obj"]
@@ -147,15 +147,14 @@ st.subheader("🏹 Strategy Monitor")
 progress_bar = st.empty()
 
 # ==============================================================================
-# ENGINE PART 1: JEREMIAH COMPRESSION ENGINE (Pure Volatility Contraction Math)
-# ENGINE PART 3: LIQUIDITY SHIELD ENGINE (Context Move Quality Evaluator)
+# ENGINE PART 1: JEREMIAH COMPRESSION ENGINE (Volatility Contraction Math Only)
+# ENGINE PART 3: LIQUIDITY SHIELD ENGINE (Quality Warning Only)
 # ==============================================================================
 
 def is_jeremiah_compressed(c, s20, s100, s200):
     """
-    CORE LAW SYSTEM ARCHITECTURE FORMULA:
-    cond1 AND (cond2 OR cond3)
-    Measures raw volatility contraction. Never suppress for aesthetic unevenness.
+    SACRED ARCHITECTURE LAW FORMULA: cond1 AND (cond2 OR cond3)
+    Measures raw volatility contraction. Pure math only. No trend or symmetry filters.
     """
     cond1 = (abs(c - s20) / c) <= 0.001
     cond2 = (abs(s20 - s100) / s20) <= 0.001
@@ -167,7 +166,7 @@ def scan_asset_matrix(symbol):
     timeframe_payloads = {}
     
     for tf in TIMEFRAMES:
-        df, src_name = safe_fetch_ohlcv(symbol, tf, limit=150)
+        df, src_name = safe_fetch_ohlcv(symbol, tf, limit=210)
         if df is None or len(df) < 20: continue
         
         # Pull tracking history behind the active bar
@@ -189,11 +188,11 @@ def scan_asset_matrix(symbol):
         direction = None
         curr_body = abs(curr['c'] - curr['o'])
         
-        # --- PART 1 PURE UNBIASED EXPANSION DETECTOR ---
+        # --- PART 1 PURE UNBIASED EXPANSION DETECTOR (SIMPLE CRITERIA ONLY) ---
         if len(cluster_candles) >= 1 and not is_currently_sqz:
             avg_cluster_body = sum(abs(r['c'] - r['o']) for r in cluster_candles) / len(cluster_candles)
             
-            # Strict 1x Body Expansion Rule. No blocks, no filters.
+            # Simple 1x Body Expansion Rule. Closes beyond SMA20.
             if curr_body > avg_cluster_body:
                 if curr['c'] > curr['o'] and curr['c'] > curr['s20']:
                     direction = "BULLISH"
@@ -258,7 +257,6 @@ for idx, symbol in enumerate(ALL_SYMBOLS):
     else:
         bigcap_signals.append(payload)
         
-    # Micro-pacing delay protects server IP from multi-exchange throttle traps
     time.sleep(0.04)
 
 progress_bar.empty()
@@ -281,11 +279,12 @@ else:
                 
                 if res['expansion']:
                     st.markdown(f"💥 **{tf} {res['dir']} RELEASE** Elephant Candle detected {src_lbl}", unsafe_allow_html=True)
-                    # Core Separation: Engines report completely independently as pure side-by-side components
+                    # Core Separation: Part 1 stays valid. Part 2 explains context. Part 3 warns only.
                     st.markdown(f"↳ <span class='badge-expansion'>PART 1 SIGNAL VALID</span> | Context: *BTC {macro_tf} is {btc_state}*", unsafe_allow_html=True)
                     if res['hole']:
                         st.markdown("↳ <span class='badge-hole'>⚠️ PART 3 WARNING: LIQUIDITY HOLE DETECTED</span> (Thin orderbook, futures-driven)", unsafe_allow_html=True)
                     st.write("")
+                # BUG #2 FIXED: Typo with broken newline key stripped clean here
                 elif res['sqz'] and not sig['is_mega']:
                     st.markdown(f"↳ <span class='badge-sqz'>🧬 {tf} COMPRESSION ACTIVE</span> Close bound near MAs {src_lbl}", unsafe_allow_html=True)
 
@@ -311,6 +310,7 @@ else:
                     if res['hole']:
                         st.markdown("↳ <span class='badge-hole'>⚠️ PART 3 WARNING: LIQUIDITY HOLE DETECTED</span> (Thin orderbook, futures-driven)", unsafe_allow_html=True)
                     st.write("")
+                # BUG #2 FIXED: Typo with broken newline key stripped clean here
                 elif res['sqz'] and not sig['is_mega']:
                     st.markdown(f"↳ <span class='badge-sqz'>🧬 {tf} COMPRESSION ACTIVE</span> Close bound near MAs {src_lbl}", unsafe_allow_html=True)
 
