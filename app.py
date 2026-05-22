@@ -18,14 +18,10 @@ st_autorefresh(interval=35000, key="datarefresh")
 # JEREMIAH EDGE SSoT V10 ARCHITECTURE BLUEPRINT
 # ==============================================================================
 # PART 1 = JEREMIAH COMPRESSION ENGINE (Creates Signals)
-#   - Detects SQZ, MEGA SQZ, and Elephant Bar releases at 0.2% precision band.
 # PART 2 = BTC MARKET REGIME ENGINE (Explains Environment)
-#   - Tracks macro trend (15m, 1h, 4h). Never blocks or alters Part 1.
-# PART 3 = LIQUIDITY SHIELD ENGINE (Evaluates Move Quality)
-#   - Advanced Derivatives Core: Tracks Volume, OI, Funding, and Liquidations.
+# PART 3 = LIQUIDITY SHIELD ENGINE (Advanced Derivatives Machine)
 # ==============================================================================
 
-# --- ANTI-SPAM SIGNAL MEMORY ---
 if "SIGNAL_MEMORY" not in st.session_state:
     st.session_state["SIGNAL_MEMORY"] = {}
 
@@ -34,9 +30,11 @@ st.markdown("""
     .stAlert { padding: 0.8rem; border-radius: 10px; }
     .stContainer { border: 1px solid #444; padding: 12px; border-radius: 10px; margin-bottom: 12px; }
     .status-dim { color: #555555; font-size: 0.8rem; font-weight: bold; }
-    .regime-table { width:100%; border-collapse: collapse; margin-bottom: 15px; }
-    .regime-table th, .regime-table td { padding: 8px; border: 1px solid #444; text-align: left; font-size: 0.85rem; }
-    .regime-table th { background-color: #262730; }
+    
+    .regime-table { width:100%; border-collapse: collapse; margin-bottom: 15px; background-color: #ffffff; }
+    .regime-table th { background-color: #1e293b; color: #ffffff !important; padding: 8px; border: 1px solid #cbd5e1; font-size: 0.85rem; font-weight: 900; }
+    .regime-table td { padding: 8px; border: 1px solid #cbd5e1; text-align: left; font-size: 0.85rem; color: #0f172a !important; }
+    
     .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
     .badge-aligned { background-color: #10b981; color: white; }
     .badge-counter { background-color: #ef4444; color: white; }
@@ -67,7 +65,6 @@ st.markdown("""
 
 st.title("🏹 JEREMIAH EDGE PRO")
 
-# --- BIFURCATED WATCHLIST STRUCTURE ---
 BIG_CAPS = [
     'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 
     'ADA/USDT', 'AVAX/USDT', 'LINK/USDT', 'NEAR/USDT', 'SUI/USDT'
@@ -83,27 +80,19 @@ ALL_SYMBOLS = BIG_CAPS + MEMECOINS
 TIMEFRAMES = ['3m', '5m', '15m'] 
 REGIME_TIMEFRAMES = ['15m', '1h', '4h']
 
-# Calibrated maximum precision band limit
 SQZ_LIMIT = 0.002  
 
-# --- HARDFOCUSED EXCHANGE PERPETUAL FUTURES LAYER ---
+# --- ENHANCED API RATE LIMIT & TIMEOUT PROTECTION ---
 EXCHANGE_CHAIN = [
-    {"name": "Binance Futures", "obj": ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'future'}})},
-    {"name": "OKX Futures",     "obj": ccxt.okx({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})},
-    {"name": "MEXC Futures",    "obj": ccxt.mexc({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})},
-    {"name": "GateIO Futures",  "obj": ccxt.gateio({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})}
+    {"name": "Binance Futures", "obj": ccxt.binance({'enableRateLimit': True, 'timeout': 7000, 'options': {'defaultType': 'future'}})},
+    {"name": "OKX Futures",     "obj": ccxt.okx({'enableRateLimit': True, 'timeout': 7000, 'options': {'defaultType': 'swap'}})},
+    {"name": "MEXC Futures",    "obj": ccxt.mexc({'enableRateLimit': True, 'timeout': 7000, 'options': {'defaultType': 'swap'}})},
+    {"name": "GateIO Futures",  "obj": ccxt.gateio({'enableRateLimit': True, 'timeout': 7000, 'options': {'defaultType': 'swap'}})}
 ]
 
-# ==============================================================================
-# PART 1: JEREMIAH COMPRESSION ENGINE (Creates Signals)
-# ==============================================================================
 def is_jeremiah_compressed(c, s20, s100):
-    all_together = (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s100)/s20 <= SQZ_LIMIT)
-    return all_together
+    return (abs(c - s20)/c <= SQZ_LIMIT) and (abs(s20 - s100)/s20 <= SQZ_LIMIT)
 
-# ==============================================================================
-# PART 2: BTC MARKET REGIME ENGINE (Explains Environment Only)
-# ==============================================================================
 def detect_market_regime(df):
     available_rows = len(df)
     if available_rows < 50: return "TRANSITIONAL", "INSUFFICIENT DATA"
@@ -118,17 +107,12 @@ def detect_market_regime(df):
     higher_highs = df['h'].iloc[-1] >= recent_df['h'].median()
     lower_lows = df['l'].iloc[-1] <= recent_df['l'].median()
     
-    overlap_window = min(5, available_rows - 1)
-    overlap_count = sum((df['h'].iloc[i] > df['l'].iloc[i-1]) and (df['l'].iloc[i] < df['h'].iloc[i-1]) for i in range(-overlap_window, 0))
-    
-    osc_window = min(10, available_rows - 1)
+    overlap_count = sum((df['h'].iloc[i] > df['l'].iloc[i-1]) and (df['l'].iloc[i] < df['h'].iloc[i-1]) for i in range(-min(5, available_rows - 1), 0))
     oscillating = sum((df['c'].iloc[i] > df['s20'].iloc[i] and df['c'].iloc[i-1] < df['s20'].iloc[i-1]) or 
-                      (df['c'].iloc[i] < df['s20'].iloc[i] and df['c'].iloc[i-1] > df['s20'].iloc[i-1]) for i in range(-osc_window, 0))
+                      (df['c'].iloc[i] < df['s20'].iloc[i] and df['c'].iloc[i-1] > df['s20'].iloc[i-1]) for i in range(-min(10, available_rows - 1), 0))
 
-    atr_window = min(14, available_rows)
-    atr = (df['h'] - df['l']).rolling(atr_window).mean().iloc[-1]
-    recent_mid = recent_df['c'].median()
-    is_contained = abs(curr['c'] - recent_mid) < (2 * atr)
+    atr = (df['h'] - df['l']).rolling(min(14, available_rows)).mean().iloc[-1]
+    is_contained = abs(curr['c'] - recent_df['c'].median()) < (2 * atr)
     
     if (ma20_slope > 0 and curr['c'] > curr['s20'] and curr['s20'] > curr['s100'] and higher_highs and oscillating < 4):
         return "TRENDING_UP", "CLEAN TREND"
@@ -142,7 +126,6 @@ def detect_market_regime(df):
 
     return "TRANSITIONAL", "MOMENTUM REBALANCING"
 
-# --- EXCHANGE FAILOVER EXECUTION LAYER ---
 def safe_fetch_ohlcv(symbol, tf, limit):
     for exchange_info in EXCHANGE_CHAIN:
         try:
@@ -156,15 +139,13 @@ def safe_fetch_ohlcv(symbol, tf, limit):
             df['s100'] = df['c'].rolling(100).mean()
             df = df.dropna().reset_index(drop=True)
             
-            time.sleep(0.04) 
+            time.sleep(0.05) # Anti-throttle buffer
             return df, name
         except Exception:
             continue
     return None, None
 
-# ==============================================================================
-# PART 3: MICROSTRUCTURE LIQUIDITY SHIELD INGESTION UTILITIES
-# ==============================================================================
+# --- BULLETPROOF PROTOCOLS AGAINST HANGING ENDPOINTS ---
 def safe_fetch_open_interest(exchange, symbol):
     try:
         oi_data = exchange.fetch_open_interest(symbol)
@@ -243,7 +224,6 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
 
     curr_body = abs(curr['c'] - curr['o'])
 
-    # --- FULL LIVE METRICS ENGINE PIPELINE ---
     current_oi = "N/A"
     current_funding = "N/A"
     current_liq = "$0"
@@ -251,10 +231,17 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
 
     try:
         primary_exchange = EXCHANGE_CHAIN[0]["obj"]
+        # Pull baseline fast metric
         current_oi = safe_fetch_open_interest(primary_exchange, symbol)
-        current_funding = safe_fetch_funding_rate(primary_exchange, symbol)
-        current_liq = safe_fetch_liquidations(primary_exchange, symbol)
-        current_ls_ratio = safe_fetch_long_short_ratio(primary_exchange, symbol)
+        
+        # Micro-delays keep the loop moving safely without triggering data locks
+        if is_currently_sqz or has_valid_cluster:
+            time.sleep(0.02)
+            current_funding = safe_fetch_funding_rate(primary_exchange, symbol)
+            time.sleep(0.02)
+            current_liq = safe_fetch_liquidations(primary_exchange, symbol)
+            time.sleep(0.02)
+            current_ls_ratio = safe_fetch_long_short_ratio(primary_exchange, symbol)
     except Exception:
         pass
 
@@ -268,7 +255,6 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             elif curr['c'] < curr['o'] and curr['c'] < curr['s20']:
                 direction = "BEARISH"; found_expansion = True
 
-    # --- LIQUIDITY SHIELD CALCULATIONS ---
     if curr['v'] > 0:
         curr_efficiency = curr_body / curr['v']
         historical_bodies = abs(df['c'].iloc[-21:-1] - df['o'].iloc[-21:-1])
@@ -289,7 +275,6 @@ def get_timeframe_signal(symbol, tf, btc_regimes):
             if macro_state == "RANGING":
                 context_flags.append(f"<span class='badge badge-range'>IN BTC {target_macro_tf.upper()} BOX</span>")
 
-    # --- ANTI-SPAM INTERCEPT ---
     signal_key = f"{symbol}_{tf}"
     if found_expansion:
         last_time = st.session_state["SIGNAL_MEMORY"].get(signal_key, 0)
@@ -337,7 +322,7 @@ st.markdown(f"""
     <div class="shield-box">
         🛡️ <b>PART 3 LIQUIDITY SHIELD ACTIVE</b><br>
         <span style="color: #333333; font-size: 0.8rem; font-weight: bold;">
-            Monitoring 10 Institutional Assets & 15 Meme Futures Assets. Complete Derivatives Context Loaded.
+            Monitoring 10 Institutional Assets & 15 Meme Futures Assets. Pacing Delay Protocols Enabled.
         </span>
     </div>
 """, unsafe_allow_html=True)
@@ -362,6 +347,9 @@ for idx, symbol in enumerate(ALL_SYMBOLS):
             if tf == '3m' and symbol == 'BTC/USDT':
                 btc_monitored_stats = (res["curr_ver"], res["base_ver"])
 
+    # Tiny sleep prevents exchange API rate limits from hanging the loop
+    time.sleep(0.06)
+
     if not tf_results: continue
     is_mega = all(tf_results.get(tf, {}).get("sqz", False) for tf in TIMEFRAMES)
     
@@ -374,7 +362,6 @@ for idx, symbol in enumerate(ALL_SYMBOLS):
 
 progress_bar.empty()
 
-# --- DISPLAY RENDER LOOP 1: VOLATILE MEMECOINS ---
 st.markdown('<div class="section-header header-meme">🔮 VOLATILE MEMECOIN FUTURES (15 ASSETS)</div>', unsafe_allow_html=True)
 if not meme_signals:
     st.markdown("<p class='empty-notice'>⚡ No active compressions or expansions in Memecoins.</p>", unsafe_allow_html=True)
@@ -403,7 +390,6 @@ else:
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
-# --- DISPLAY RENDER LOOP 2: INSTITUTIONAL BIG CAPS ---
 st.markdown('<div class="section-header header-big">👑 INSTITUTIONAL BIG CAPS (10 ASSETS)</div>', unsafe_allow_html=True)
 if not bigcap_signals:
     st.markdown("<p class='empty-notice'>⭐ No active compressions or expansions in Big Caps.</p>", unsafe_allow_html=True)
@@ -432,4 +418,12 @@ else:
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
-# --- THE CRITICAL
+if btc_monitored_stats:
+    st.markdown(f"""
+        <p style="font-size: 0.8rem; color: #111111; margin-top:20px; font-weight: bold;">
+            📊 Live Book Feed (BTC 3m) | Run: {btc_monitored_stats[0]:.5f} vs Shield Target: {(btc_monitored_stats[1]*1.8):.5f}
+        </p>
+    """, unsafe_allow_html=True)
+
+st.divider()
+st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | SSoT V10 (Complete Derivative Ingestion Engine)")
