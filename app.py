@@ -84,7 +84,7 @@ def safe_fetch_ohlcv(symbol, tf, limit=150):
 # ==============================================================================
 def detect_market_regime(df):
     available_rows = len(df)
-    if available_rows < 50: return "TRANSITIONAL", "INSUFFICIENT DATA"
+    if available_rows < 30: return "TRANSITIONAL", "INSUFFICIENT DATA"
     curr = df.iloc[-1]
     
     # SMA20 Slope Calculation
@@ -124,7 +124,7 @@ st.markdown("### 📡 Centralized BTC Market Regime (SSoT Part 2)")
 btc_regimes = {}
 
 for tf in REGIME_TIMEFRAMES:
-    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=210)
+    btc_df, _ = safe_fetch_ohlcv('BTC/USDT', tf, limit=500)
     if btc_df is not None:
         state, structure = detect_market_regime(btc_df)
         btc_regimes[tf] = {"state": state, "structure": structure}
