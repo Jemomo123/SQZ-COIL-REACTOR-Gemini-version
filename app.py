@@ -36,10 +36,10 @@ st.markdown("""
     .regime-table td { padding: 10px; border: 1px solid #cbd5e1; text-align: left; font-size: 0.85rem; color: #0f172a !important; font-weight: bold; }
     
     /* High-Contrast Badges */
-    .badge-sqz { background-color: #2563eb; color: #ffffff; padding: 4px 8px; border-radius: 4px; font-weight: 900; font-size: 0.8rem; }
-    .badge-mega { background-color: #dc2626; color: #ffffff; padding: 6px 12px; border-radius: 6px; font-weight: 900; font-size: 0.9rem; }
-    .badge-expansion { background-color: #16a34a; color: #ffffff; padding: 4px 8px; border-radius: 4px; font-weight: 900; font-size: 0.8rem; }
-    .badge-hole { background-color: #ea580c; color: #ffffff; padding: 4px 8px; border-radius: 4px; font-weight: 900; font-size: 0.8rem; border: 2px solid #0f172a; }
+    .badge-sqz { background-color: #2563eb; color: #ffffff; padding: 4px 8px; border-radius: 4px; font-weight: 900; font-size: 0.8rem; display: inline-block; }
+    .badge-mega { background-color: #dc2626; color: #ffffff; padding: 6px 12px; border-radius: 6px; font-weight: 900; font-size: 0.9rem; display: block; margin-bottom: 8px; }
+    .badge-expansion { background-color: #16a34a; color: #ffffff; padding: 4px 8px; border-radius: 4px; font-weight: 900; font-size: 0.8rem; display: inline-block; }
+    .badge-hole { background-color: #ea580c; color: #ffffff; padding: 4px 8px; border-radius: 4px; font-weight: 900; font-size: 0.8rem; border: 2px solid #0f172a; display: inline-block; }
     
     .section-header { padding: 10px 14px; border-radius: 6px; font-weight: 900; font-size: 1rem; margin-top: 20px; margin-bottom: 14px; letter-spacing: 0.5px; border: 2px solid #0f172a; }
     .header-meme { background-color: #c084fc; color: #0f172a; }
@@ -147,12 +147,16 @@ st.subheader("🏹 Strategy Monitor")
 progress_bar = st.empty()
 
 # ==============================================================================
-# ENGINE PART 1: JEREMIAH COMPRESSION ENGINE (Independent Logic Creator)
+# ENGINE PART 1: JEREMIAH COMPRESSION ENGINE (Pure Volatility Contraction Math)
 # ENGINE PART 3: LIQUIDITY SHIELD ENGINE (Context Move Quality Evaluator)
 # ==============================================================================
 
 def is_jeremiah_compressed(c, s20, s100, s200):
-    """Core strict math check: close to s20 is <= 0.1%, and either s100 or s200 is bound inside 0.1%."""
+    """
+    CORE LAW SYSTEM ARCHITECTURE FORMULA:
+    cond1 AND (cond2 OR cond3)
+    Measures raw volatility contraction. Never suppress for aesthetic unevenness.
+    """
     cond1 = (abs(c - s20) / c) <= 0.001
     cond2 = (abs(s20 - s100) / s20) <= 0.001
     cond3 = (abs(s20 - s200) / s20) <= 0.001
@@ -198,10 +202,6 @@ def scan_asset_matrix(symbol):
                     direction = "BEARISH"
                     found_expansion = True
                     
-        # Filter dead records immediately to preserve mobile browser memory
-        if not is_currently_sqz and not found_expansion:
-            continue
-            
         # --- PART 3 LIQUIDITY SHIELD DETECTOR (Informational Warning Only) ---
         is_liquidity_hole = False
         if curr['v'] > 0:
@@ -213,6 +213,10 @@ def scan_asset_matrix(symbol):
             if curr_efficiency > (avg_historical_efficiency * 1.8):
                 is_liquidity_hole = True
                 
+        # Filter dead records immediately to preserve mobile browser memory
+        if not is_currently_sqz and not found_expansion:
+            continue
+            
         # Handle 3-minute Anti-Spam Memory Layout Locks
         sig_key = f"{symbol}_{tf}"
         if found_expansion:
@@ -277,13 +281,13 @@ else:
                 
                 if res['expansion']:
                     st.markdown(f"💥 **{tf} {res['dir']} RELEASE** Elephant Candle detected {src_lbl}", unsafe_allow_html=True)
-                    # Engines report completely independently as pure side-by-side strings
+                    # Core Separation: Engines report completely independently as pure side-by-side components
                     st.markdown(f"↳ <span class='badge-expansion'>PART 1 SIGNAL VALID</span> | Context: *BTC {macro_tf} is {btc_state}*", unsafe_allow_html=True)
                     if res['hole']:
                         st.markdown("↳ <span class='badge-hole'>⚠️ PART 3 WARNING: LIQUIDITY HOLE DETECTED</span> (Thin orderbook, futures-driven)", unsafe_allow_html=True)
                     st.write("")
                 elif res['sqz'] and not sig['is_mega']:
-                    st.markdown(f"<span class='badge-sqz'>🧬 {tf} COMPRESSION ACTIVE</span> Close bound near MAs {src_lbl}", unsafe_allow_html=True)
+                    st.markdown(f"↳ <span class='badge-sqz'>🧬 {tf} COMPRESSION ACTIVE</span> Close bound near MAs {src_lbl}", unsafe_allow_html=True)
 
 # --- DISPLAY STREAM 2: INSTITUTIONAL BIG CAPS ---
 st.markdown('<div class="section-header header-big">👑 INSTITUTIONAL BIG CAPS (10 ASSETS)</div>', unsafe_allow_html=True)
@@ -308,7 +312,7 @@ else:
                         st.markdown("↳ <span class='badge-hole'>⚠️ PART 3 WARNING: LIQUIDITY HOLE DETECTED</span> (Thin orderbook, futures-driven)", unsafe_allow_html=True)
                     st.write("")
                 elif res['sqz'] and not sig['is_mega']:
-                    st.markdown(f"<span class='badge-sqz'>🧬 {tf} COMPRESSION ACTIVE</span> Close bound near MAs {src_lbl}", unsafe_allow_html=True)
+                    st.markdown(f"↳ <span class='badge-sqz'>🧬 {tf} COMPRESSION ACTIVE</span> Close bound near MAs {src_lbl}", unsafe_allow_html=True)
 
 st.divider()
 st.caption(f"Heartbeat: {pd.Timestamp.now().strftime('%H:%M:%S')} | JEREMIAH EDGE PRO SSoT V10 Stable Production Engine")
