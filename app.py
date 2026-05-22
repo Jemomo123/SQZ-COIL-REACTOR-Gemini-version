@@ -432,4 +432,4 @@ else:
                 elif res["sqz"]:
                     st.markdown(f"🧬 **{tf}:** Active Jeremiah Compression {source_tag}", unsafe_allow_html=True)
 
-if btc_monitored_s
+# --- THE CRITICAL
