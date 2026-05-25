@@ -53,6 +53,11 @@ def run_pure_compression_math(symbol, timeframe):
     """
     Core Part 1 Algorithm Engine.
     Executes the ultimate rule: cond1 AND (cond2 OR cond3)
+    Enforces a strict 4-decimal rounding check to guarantee numbers like 0.109% fail.
+    
+    CRITICAL SMA200 LAW:
+    - Banned/Ignored entirely from ALL TOGETHER equations.
+    - Active ONLY in determining whether the SPECIAL ONE has occurred.
     """
     candles = fetch_mexc_candles(symbol, timeframe)
     if not candles or len(candles) < 200:
@@ -66,16 +71,21 @@ def run_pure_compression_math(symbol, timeframe):
     sma100 = calculate_sma(closes, 100)
     sma200 = calculate_sma(closes, 200)
     
-    # cond1: Price near SMA20
-    cond1 = (abs(live_price - sma20) / live_price) <= THRESHOLD
+    # Calculate exact distance ratios rounded strictly to 4 decimal places
+    price_to_sma20 = round(abs(live_price - sma20) / live_price, 4)
+    sma20_to_sma100 = round(abs(sma20 - sma100) / sma20, 4)
+    sma20_to_sma200 = round(abs(sma20 - sma200) / sma20, 4)
     
-    # cond2: SMA20 near SMA100 (ALL TOGETHER)
-    cond2 = (abs(sma20 - sma100) / sma20) <= THRESHOLD
+    # cond1: Price near SMA20 (Must be strictly <= 0.001)
+    cond1 = price_to_sma20 <= THRESHOLD
     
-    # cond3: SMA20 near SMA200 (SPECIAL ONE)
-    cond3 = (abs(sma20 - sma200) / sma20) <= THRESHOLD
+    # cond2: SMA20 near SMA100 (ALL TOGETHER - SMA200 is completely blind here)
+    cond2 = sma20_to_sma100 <= THRESHOLD
     
-    # Route matching rules independently without cross-talk
+    # cond3: SMA20 near SMA200 (SPECIAL ONE - SMA200 is active ONLY here)
+    cond3 = sma20_to_sma200 <= THRESHOLD
+    
+    # Route matching rules independently without cross-talk or visual stacking checks
     if cond1 and cond2:
         return {"sqz": True, "type": "ALL TOGETHER"}
     elif cond1 and cond3:
@@ -97,7 +107,7 @@ def fetch_btc_regime_data():
 # ==============================================================================
 # STREAMLIT USER INTERFACE VIEWPORT (MOBILE RUNTIME ENVIRONMENT)
 # ==============================================================================
-st.markdown("### 🏛️ Centralized BTC Market Regime (SSoT Part 2)")
+st.markdown("### 🏛 *Centralized BTC Market Regime (SSoT Part 2)*")
 
 # Render Part 2 Interface Layout Matrix Box
 btc_data = fetch_btc_regime_data()
@@ -111,7 +121,7 @@ regime_table = f"""
 st.markdown(regime_table)
 st.markdown("---")
 
-st.markdown("### 📡 Strategy Monitor (Part 1)")
+st.markdown("### 📡 *Strategy Monitor (Part 1)*")
 
 # Initialize active tracking structures
 all_together_alerts = []
