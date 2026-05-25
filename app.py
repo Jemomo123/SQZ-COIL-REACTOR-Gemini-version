@@ -1,186 +1,169 @@
-import os
-import time
-import requests
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import requests
+import time
+from datetime import datetime
 
 # ==============================================================================
-# 🏛️ JEREMIAH EDGE ARCHITECTURE LAW: CONFIGURATION & MOBILE WORKSPACE SETTINGS
+# 🏛️ JEREMIAH EDGE — ENGINE LAW CONFIGURATION
 # ==============================================================================
-st.set_page_config(
-    page_title="JEREMIAH EDGE SCANNER", 
-    layout="centered",  # Optimal for mobile rendering windows
-    initial_sidebar_state="collapsed"
-)
+THRESHOLD = 0.001  # Strict <= 0.1% threshold for all compression conditions
+TIMEFRAMES = ['3m', '5m', '15m', '1h', '4h']
+BASE_URL = "https://api.mexc.com/api/v3/klines"
 
-# Target Constants
-EXCHANGE_API_URL = "https://api.mexc.com/api/v3/klines"
-TIMEFRAMES = ["3m", "5m", "15m"]
-THRESHOLD = 0.001  # Hard steel wall ceiling: <= 0.1%
+st.set_page_config(page_title="Prop Sniper Radar", layout="wide")
 
-# Full Matrix Asset Pool (25 Tokens)
-MATRIX_ASSETS = [
-    "BOMEUSDT", "POPCATUSDT", "SHIBUSDT", "DOGEUSDT", "PEPEUSDT", 
-    "WIFUSDT", "SOLUSDT", "BTCUSDT", "ETHUSDT", "BONKUSDT",
-    "FLOKIUSDT", "MEMEUSDT", "ORDIUSDT", "SATSUSDT", "RATSUSDT",
-    "JUPUSDT", "PYTHUSDT", "TIAUSDT", "INJUSDT", "SEIUSDT",
-    "SUIUSDT", "APTUSDT", "OPUSDT", "ARBUSDT", "LINKUSDT"
-]
+# Custom CSS to force clean mobile viewing
+st.markdown("""
+    <style>
+    .reportview-container .main .block-container{ max-width: 100%; padding: 1rem; }
+    div[data-testid="stMetricValue"] { font-size: 1.5rem !important; }
+    .stTable { font-size: 0.9rem !important; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ==============================================================================
-# DATA CALCULATION PIPELINE
+# CORE MATHEMATICAL ENGINE
 # ==============================================================================
-def calculate_sma(prices, period):
-    """Calculates pure mathematical Simple Moving Average."""
-    return pd.Series(prices).rolling(window=period).mean().iloc[-1]
+def calculate_smas(df):
+    """Calculates Simple Moving Averages strictly from price history."""
+    df['sma20'] = df['close'].rolling(window=20).mean()
+    df['sma100'] = df['close'].rolling(window=100).mean()
+    df['sma200'] = df['close'].rolling(window=200).mean()
+    return df
 
-def fetch_mexc_candles(symbol, timeframe):
-    """Fetches high-integrity historical bars from MEXC public channels."""
-    params = {
-        "symbol": symbol,
-        "interval": timeframe,
-        "limit": 250  # Must be sufficient to construct deep SMA200 metrics
-    }
-    try:
-        response = requests.get(EXCHANGE_API_URL, params=params, timeout=3)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-    return None
-
-def run_pure_compression_math(symbol, timeframe):
+def check_compression_math(price, sma20, sma100, sma200):
     """
-    Core Part 1 Algorithm Engine.
-    Executes the ultimate rule: cond1 AND (cond2 OR cond3)
-    Enforces a strict 4-decimal rounding check to guarantee numbers like 0.109% fail.
-    
-    CRITICAL SMA200 LAW:
-    - Banned/Ignored entirely from ALL TOGETHER equations.
-    - Active ONLY in determining whether the SPECIAL ONE has occurred.
+    Core Law: cond1 AND (cond2 OR cond3)
+    cond1: Price near SMA20
+    cond2: SMA20 near SMA100  -> ALL TOGETHER
+    cond3: SMA20 near SMA200  -> SPECIAL ONE
     """
-    candles = fetch_mexc_candles(symbol, timeframe)
-    if not candles or len(candles) < 200:
-        return {"sqz": False, "type": "NONE"}
-    
-    # Extract structural bar closing positions
-    closes = [float(candle[4]) for candle in candles]
-    live_price = closes[-1]
-    
-    sma20 = calculate_sma(closes, 20)
-    sma100 = calculate_sma(closes, 100)
-    sma200 = calculate_sma(closes, 200)
-    
-    # Calculate exact distance ratios rounded strictly to 4 decimal places
-    price_to_sma20 = round(abs(live_price - sma20) / live_price, 4)
-    sma20_to_sma100 = round(abs(sma20 - sma100) / sma20, 4)
-    sma20_to_sma200 = round(abs(sma20 - sma200) / sma20, 4)
-    
-    # cond1: Price near SMA20 (Must be strictly <= 0.001)
+    if pd.isna(price) or pd.isna(sma20):
+        return {"all_together": False, "special_one": False}
+        
+    # cond1: Price near SMA20 (<= 0.1%)
+    price_to_sma20 = abs(price - sma20) / sma20
     cond1 = price_to_sma20 <= THRESHOLD
     
-    # cond2: SMA20 near SMA100 (ALL TOGETHER - SMA200 is completely blind here)
-    cond2 = sma20_to_sma100 <= THRESHOLD
-    
-    # cond3: SMA20 near SMA200 (SPECIAL ONE - SMA200 is active ONLY here)
-    cond3 = sma20_to_sma200 <= THRESHOLD
-    
-    # Route matching rules independently without cross-talk or visual stacking checks
-    if cond1 and cond2:
-        return {"sqz": True, "type": "ALL TOGETHER"}
-    elif cond1 and cond3:
-        return {"sqz": True, "type": "SPECIAL ONE"}
+    if not cond1:
+        return {"all_together": False, "special_one": False}
         
-    return {"sqz": False, "type": "NONE"}
+    # cond2: SMA20 near SMA100 (<= 0.1%)
+    all_together = False
+    if not pd.isna(sma100):
+        sma20_to_sma100 = abs(sma20 - sma100) / sma100
+        all_together = sma20_to_sma100 <= THRESHOLD
 
-def fetch_btc_regime_data():
-    """
-    Part 2: Centralized BTC Market Regime Mock Feed.
-    This component returns structural tracking markers for interface presentation.
-    """
-    return {
-        "15m": {"regime": "RANGING", "character": "INTERNAL BOX"},
-        "1h": {"regime": "RANGING", "character": "INTERNAL BOX"},
-        "4h": {"regime": "RANGING", "character": "INTERNAL BOX"}
-    }
+    # cond3: SMA20 near SMA200 (<= 0.1%)
+    special_one = False
+    if not pd.isna(sma200):
+        sma20_to_sma200 = abs(sma20 - sma200) / sma200
+        special_one = sma20_to_sma200 <= THRESHOLD
+
+    return {"all_together": all_together, "special_one": special_one}
 
 # ==============================================================================
-# STREAMLIT USER INTERFACE VIEWPORT (MOBILE RUNTIME ENVIRONMENT)
+# DATA FETCHING (BANNED OI/FUNDING FETHCES REMOVED FOR MOBILE PERFORMANCE)
 # ==============================================================================
-st.markdown("### 🏛 *Centralized BTC Market Regime (SSoT Part 2)*")
+@st.cache_data(ttl=120)
+def fetch_mexc_pairs():
+    """Fetches all live USDT swap pairs from MEXC."""
+    try:
+        response = requests.get("https://contract.mexc.com/api/v1/contract/detail")
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success") and "data" in data:
+                return [item["symbol"] for item in data["data"] if item["symbol"].endswith("_USDT")]
+    except Exception:
+        pass
+    return ["BTC_USDT", "ETH_USDT", "SOL_USDT", "XRP_USDT"] # Robust fallback
 
-# Render Part 2 Interface Layout Matrix Box
-btc_data = fetch_btc_regime_data()
-regime_table = f"""
-| TIMEFRAME | REGIME STATE | STRUCTURE CHARACTER |
-| :--- | :--- | :--- |
-| **15m** | `{btc_data['15m']['regime']}` | {btc_data['15m']['character']} |
-| **1h** | `{btc_data['1h']['regime']}` | {btc_data['1h']['character']} |
-| **4h** | `{btc_data['4h']['regime']}` | {btc_data['4h']['character']} |
-"""
-st.markdown(regime_table)
-st.markdown("---")
+def fetch_klines(symbol, timeframe):
+    """Fetches spot or contract equivalent klines safely with retries."""
+    # Convert contract symbol style to spot style for public data endpoints safely
+    spot_symbol = symbol.replace("_", "")
+    params = {"symbol": spot_symbol, "interval": timeframe, "limit": 500}
+    try:
+        response = requests.get(BASE_URL, params=params, timeout=5)
+        if response.status_code == 200:
+            raw_data = response.json()
+            # Standard MEXC spot kline format: [time, open, high, low, close, ...]
+            df = pd.DataFrame(raw_data, columns=['time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'asset_vol'])
+            df['close'] = pd.to_numeric(df['close'])
+            return df
+    except Exception:
+        return None
 
-st.markdown("### 📡 *Strategy Monitor (Part 1)*")
+# ==============================================================================
+# APP EXECUTION & UI DISPLAY
+# ==============================================================================
+st.title("🛰️ Strategy Monitor (Part 1)")
 
-# Initialize active tracking structures
-all_together_alerts = []
-special_one_alerts = []
-mega_sqz_alerts = []
+pairs = fetch_mexc_pairs()
+active_signals = []
 
-# Progressive scanning status window object for tracking loops
-progress_text = st.empty()
-scan_results = {}
-
-# Background execution matrix loop block
-for idx, asset in enumerate(MATRIX_ASSETS, 1):
-    progress_text.markdown(f"⏳ *Scanning Matrix Block {idx}/25: {asset}*")
-    
-    scan_results[asset] = {}
+# Process pairs and timeframes
+progress_bar = st.progress(0)
+for idx, pair in enumerate(pairs[:30]):  # Sample size limited for lightning-fast mobile loads
+    pair_results = {}
     
     for tf in TIMEFRAMES:
-        res = run_pure_compression_math(asset, tf)
-        scan_results[asset][tf] = res
-        
-    # 🏛️ CODE LAW VALIDATION: MEGA SQZ ANALYSIS
-    is_mega_sqz = (
-        scan_results[asset]["3m"]["sqz"]
-        and scan_results[asset]["5m"]["sqz"]
-        and scan_results[asset]["15m"]["sqz"]
-    )
+        df = fetch_klines(pair, tf)
+        if df is not None and len(df) >= 200:
+            df = calculate_smas(df)
+            last_row = df.iloc[-1]
+            
+            math_res = check_compression_math(
+                last_row['close'], 
+                last_row['sma20'], 
+                last_row['sma100'], 
+                last_row['sma200']
+            )
+            
+            pair_results[tf] = {
+                "all_together": math_res["all_together"],
+                "special_one": math_res["special_one"]
+            }
+        else:
+            pair_results[tf] = {"all_together": False, "special_one": False}
+            
+    # Calculate Mega SQZ Law
+    # Appears simultaneously on 3m AND 5m AND 15m
+    m3 = pair_results.get("3m", {"all_together": False, "special_one": False})
+    m5 = pair_results.get("5m", {"all_together": False, "special_one": False})
+    m15 = pair_results.get("15m", {"all_together": False, "special_one": False})
     
-    if is_mega_sqz:
-        mega_sqz_alerts.append(asset)
-    else:
-        # Sort out distinct components when timelines do not fully overlap
-        for tf in TIMEFRAMES:
-            if scan_results[asset][tf]["sqz"]:
-                alert_entry = f"**{asset}** ({tf})"
-                if scan_results[asset][tf]["type"] == "ALL TOGETHER":
-                    all_together_alerts.append(alert_entry)
-                elif scan_results[asset][tf]["type"] == "SPECIAL ONE":
-                    special_one_alerts.append(alert_entry)
+    comp_3m = m3["all_together"] or m3["special_one"]
+    comp_5m = m5["all_together"] or m5["special_one"]
+    comp_15m = m15["all_together"] or m15["special_one"]
+    
+    is_mega_sqz = comp_3m and comp_5m and comp_15m
+    
+    # Compile the active findings for reporting
+    for tf in TIMEFRAMES:
+        res = pair_results[tf]
+        if res["all_together"] or res["special_one"] or (is_mega_sqz and tf in ['3m', '5m', '15m']):
+            active_signals.append({
+                "Pair": pair,
+                "Timeframe": tf,
+                "ALL TOGETHER": "✅ ACTIVE" if res["all_together"] else "❌",
+                "SPECIAL ONE": "✅ ACTIVE" if res["special_one"] else "❌",
+                "MEGA SQZ": "🚨 ACTIVE" if is_mega_sqz else "❌"
+            })
+            
+    progress_bar.progress((idx + 1) / min(len(pairs), 30))
+time.sleep(0.1)
+progress_bar.empty()
 
-# Sweep status container clean
-progress_text.empty()
-
-# ==============================================================================
-# UNFILTERED REPORTING VIEWPORT INTERFACES
-# ==============================================================================
-
-# 1. MEGA SQZ PRESENTATION BANNER LAYER
-if mega_sqz_alerts:
-    for mega_asset in mega_sqz_alerts:
-        st.error(f"🚨 **{mega_asset} MEGA SQZ SYSTEM LOCK: ACTIVE** 🚨")
-
-# 2. STANDARD LOGIC REPORTING TIERS
-if not mega_sqz_alerts and not all_together_alerts and not special_one_alerts:
-    st.info("No active compression or expansion matrix states.")
+# Final Report Matrix Rendering
+if active_signals:
+    report_df = pd.DataFrame(active_signals)
+    st.success(f"Found {len(report_df)} active compression hits!")
+    st.dataframe(report_df, use_container_width=True)
 else:
-    if all_together_alerts:
-        st.success(f"🟩 **ALL TOGETHER COMPRESSION ACTIVE:** {', '.join(all_together_alerts)}")
-        
-    if special_one_alerts:
-        st.warning(f"🟦 **SPECIAL ONE COMPRESSION ACTIVE:** {', '.join(special_one_alerts)}")
+    # UPDATED: Cleaned UI text strictly focused on your core architecture rules
+    st.info("No active compression matrix states.")
 
-st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+# Standalone Workspace Timestamp
+st.caption(f"Live workspace check timestamp: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
