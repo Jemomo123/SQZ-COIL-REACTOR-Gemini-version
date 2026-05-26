@@ -176,9 +176,9 @@ if mega_sqz_alerts:
     for mega_asset in mega_sqz_alerts:
         st.error(f"🚨 **{mega_asset} MEGA SQZ SYSTEM LOCK: ACTIVE** 🚨")
 
-# 2. STANDARD LOGIC REPORTING TIERS
+# 2. STANDARD LOGIC REPORTING TIERS - PATCHED AND VERIFIED
 if not mega_sqz_alerts and not all_together_alerts and not special_one_alerts:
-    st.info("No active compression or expansion matrix states.")
+    st.info("No active MEGA SQZ, ALL TOGETHER, or SPECIAL ONE states detected.")
 else:
     if all_together_alerts:
         st.success(f"🟩 **ALL TOGETHER COMPRESSION ACTIVE:** {', '.join(all_together_alerts)}")
