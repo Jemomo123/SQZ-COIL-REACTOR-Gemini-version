@@ -95,14 +95,42 @@ def run_pure_compression_math(symbol, timeframe):
 
 def fetch_btc_regime_data():
     """
-    Part 2: Centralized BTC Market Regime Feed.
-    Restored back to your exact 15m, 1h, and 4h structural rows.
+    Part 2 Law: Connects live to MEXC for BTCUSDT and calculates
+    the structural regimes dynamically for 15m, 1h, and 4h.
     """
-    return {
-        "15m": {"regime": "RANGING", "character": "INTERNAL BOX"},
-        "1h": {"regime": "RANGING", "character": "INTERNAL BOX"},
-        "4h": {"regime": "RANGING", "character": "INTERNAL BOX"}
-    }
+    timeframes_p2 = ["15m", "1h", "4h"]
+    results = {}
+    
+    for tf in timeframes_p2:
+        # Reuses your existing fetch engine safely
+        candles = fetch_mexc_candles("BTCUSDT", tf)
+        if not candles or len(candles) < 50:
+            results[tf] = {"regime": "UNKNOWN", "character": "DATA ERROR"}
+            continue
+            
+        closes = [float(candle[4]) for candle in candles]
+        current_price = closes[-1]
+        
+        # Calculate recent boundary range (last 20 candles)
+        recent_window = closes[-20:]
+        max_boundary = max(recent_window)
+        min_boundary = min(recent_window)
+        range_width = (max_boundary - min_boundary) / min_boundary
+        
+        # Calculate basic 20 SMA for internal box tracking
+        sma20 = pd.Series(closes).rolling(window=20).mean().iloc[-1]
+        
+        # 1.5% threshold determines if it's trapped in a Box or Trending Clear
+        if range_width <= 0.015:
+            if abs(current_price - sma20) / sma20 <= 0.002:
+                results[tf] = {"regime": "RANGING", "character": "INTERNAL BOX"}
+            else:
+                results[tf] = {"regime": "RANGING", "character": "BOX"}
+        else:
+            results[tf] = {"regime": "TRENDING", "character": "CLEAR"}
+            
+    return results
+
 
 # ==============================================================================
 # STREAMLIT USER INTERFACE VIEWPORT (RESTORED TO ORIGINAL SSoT LAYOUT)
