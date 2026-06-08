@@ -97,12 +97,15 @@ def fetch_btc_regime_data():
     """
     Part 2 Law: Connects live to MEXC for BTCUSDT and calculates
     the structural regimes dynamically for 15m, 1h, and 4h.
+    Paces requests with a micro-sleep to prevent 1h DATA ERROR dropouts.
     """
     timeframes_p2 = ["15m", "1h", "4h"]
     results = {}
     
     for tf in timeframes_p2:
-        # Reuses your existing fetch engine safely
+        # 🟩 PACE PATCH: Prevents exchange rate-limiting from dropping the 1h packet
+        time.sleep(0.15)
+        
         candles = fetch_mexc_candles("BTCUSDT", tf)
         if not candles or len(candles) < 50:
             results[tf] = {"regime": "UNKNOWN", "character": "DATA ERROR"}
@@ -129,7 +132,7 @@ def fetch_btc_regime_data():
         else:
             results[tf] = {"regime": "TRENDING", "character": "CLEAR"}
             
-    return results  # Fixed: Restored missing termination return statement
+    return results
 
 
 # ==============================================================================
@@ -139,7 +142,7 @@ def fetch_btc_regime_data():
 # RESTORED TITLE & ICON SPECIFICALLY
 st.markdown("## 🛰️ Centralized BTC Market Regime (SSoT Part 2)")
 
-# 🟩 PATCH: Pull calculations dynamically out of the live dictionary
+# Pull calculations dynamically out of the live dictionary
 btc_data = fetch_btc_regime_data()
 
 regime_table = f"""
@@ -216,4 +219,3 @@ else:
         st.warning(f"🟦 **SPECIAL ONE COMPRESSION ACTIVE:** {', '.join(special_one_alerts)}")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    
