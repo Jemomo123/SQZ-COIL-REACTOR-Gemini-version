@@ -129,25 +129,37 @@ def fetch_btc_regime_data():
         else:
             results[tf] = {"regime": "TRENDING", "character": "CLEAR"}
             
-    return results
-
-
-# ==============================================================================
+    # ==============================================================================
 # STREAMLIT USER INTERFACE VIEWPORT (RESTORED TO ORIGINAL SSoT LAYOUT)
 # ==============================================================================
 
 # RESTORED TITLE & ICON SPECIFICALLY
 st.markdown("## 🛰️ Centralized BTC Market Regime (SSoT Part 2)")
 
+# 🟩 PATCH: Pull calculations dynamically out of the live dictionary
+btc_data = fetch_btc_regime_data()
+
+regime_table = f"""
+| TIMEFRAME | REGIME STATE | STRUCTURE CHARACTER |
+| :--- | :--- | :--- |
+| 15m | **{btc_data.get('15m', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('15m', {}).get('character', 'DATA ERROR')} |
+| 1h  | **{btc_data.get('1h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('1h', {}).get('character', 'DATA ERROR')}  |
+| 4h  | **{btc_data.get('4h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('4h', {}).get('character', 'DATA ERROR')}  |
+"""
+st.markdown(regime_table)
+st.markdown("---")
+
+
 # Render Part 2 Interface Layout Matrix Box with original headings
 btc_data = fetch_btc_regime_data()
 regime_table = f"""
 | TIMEFRAME | REGIME STATE | STRUCTURE CHARACTER |
 | :--- | :--- | :--- |
-| 15m | **RANGING** | INTERNAL BOX |
-| 1h | **RANGING** | INTERNAL BOX |
-| 4h | **RANGING** | INTERNAL BOX |
+| 15m | **{btc_data.get('15m', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('15m', {}).get('character', 'DATA ERROR')} |
+| 1h  | **{btc_data.get('1h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('1h', {}).get('character', 'DATA ERROR')}  |
+| 4h  | **{btc_data.get('4h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('4h', {}).get('character', 'DATA ERROR')}  |
 """
+
 st.markdown(regime_table)
 st.markdown("---")
 
