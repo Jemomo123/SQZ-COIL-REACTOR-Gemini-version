@@ -96,15 +96,14 @@ def run_pure_compression_math(symbol, timeframe):
 def fetch_btc_regime_data():
     """
     Part 2 Law: Connects live to MEXC for BTCUSDT and calculates
-    the structural regimes dynamically for 15m, 1h, and 4h.
-    Paces requests with a micro-sleep to prevent 1h DATA ERROR dropouts.
+    the structural regimes dynamically for 15m, 60m, and 4h.
     """
-    timeframes_p2 = ["15m", "1h", "4h"]
+    # 🟩 UPDATED: Structural timeframes mapped exactly to standard MEXC API strings
+    timeframes_p2 = ["15m", "60m", "4h"]
     results = {}
     
     for tf in timeframes_p2:
-        # 🟩 PACE PATCH: Prevents exchange rate-limiting from dropping the 1h packet
-        time.sleep(0.15)
+        time.sleep(0.15)  # Pace connection to prevent browser drops
         
         candles = fetch_mexc_candles("BTCUSDT", tf)
         if not candles or len(candles) < 50:
@@ -145,11 +144,12 @@ st.markdown("## 🛰️ Centralized BTC Market Regime (SSoT Part 2)")
 # Pull calculations dynamically out of the live dictionary
 btc_data = fetch_btc_regime_data()
 
+# 🟩 UPDATED: Frontend table mapped clean to 15m, 60m, and 4h keys
 regime_table = f"""
 | TIMEFRAME | REGIME STATE | STRUCTURE CHARACTER |
 | :--- | :--- | :--- |
 | 15m | **{btc_data.get('15m', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('15m', {}).get('character', 'DATA ERROR')} |
-| 1h  | **{btc_data.get('1h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('1h', {}).get('character', 'DATA ERROR')}  |
+| 60m | **{btc_data.get('60m', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('60m', {}).get('character', 'DATA ERROR')}  |
 | 4h  | **{btc_data.get('4h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('4h', {}).get('character', 'DATA ERROR')}  |
 """
 st.markdown(regime_table)
@@ -219,3 +219,4 @@ else:
         st.warning(f"🟦 **SPECIAL ONE COMPRESSION ACTIVE:** {', '.join(special_one_alerts)}")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    
