@@ -15,7 +15,8 @@ st.set_page_config(
 
 # Target Constants
 EXCHANGE_API_URL = "https://api.mexc.com/api/v3/klines"
-TIMEFRAMES = ["3m", "5m", "15m"]
+# 🟩 PATCHED: Swapped "3m" out and introduced the "2m" timeframe natively
+TIMEFRAMES = ["2m", "5m", "15m"]
 THRESHOLD = 0.001  # Hard steel wall ceiling: <= 0.1%
 
 # 📋 THE RESTORED VERIFIED WATCHLIST POOL (25 Tokens) - LOCKED BY SUPREME LAW
@@ -35,18 +36,66 @@ def calculate_sma(prices, period):
     return pd.Series(prices).rolling(window=period).mean().iloc[-1]
 
 def fetch_mexc_candles(symbol, timeframe):
-    """Fetches high-integrity historical bars from MEXC public channels."""
-    params = {
+    """
+    High-integrity historical bar engine with Supreme Failover Protection.
+    Primary Route: MEXC Public REST API
+    Failover Route: OKX v5 Public REST API (Fires instantly if MEXC drops or throttles)
+    """
+    # Timeframe string translation map for OKX native parameters
+    okx_tf_map = {
+        "2m": "2m",
+        "3m": "3m",
+        "5m": "5m",
+        "15m": "15m",
+        "60m": "1H",
+        "1h": "1H",
+        "4h": "4H"
+    }
+
+    # 1️⃣ PRIMARY CONNECTION LINE: Attempt Live Fetch from MEXC
+    mexc_params = {
         "symbol": symbol,
         "interval": timeframe,
-        "limit": 250  # Must be sufficient to construct deep SMA200 metrics
+        "limit": 250
     }
     try:
-        response = requests.get(EXCHANGE_API_URL, params=params, timeout=3)
+        response = requests.get(EXCHANGE_API_URL, params=mexc_params, timeout=3)
         if response.status_code == 200:
             return response.json()
     except Exception:
+        pass  # Bypass immediately to shield the phone UI from freezes
+
+    # 2️⃣ AUTOMATIC SHIELD FAILOVER LINE: Triggers immediately if MEXC fails
+    try:
+        # Reformat asset tracking names to OKX structural syntax (e.g. BTCUSDT -> BTC-USDT)
+        okx_symbol = symbol.replace("USDT", "-USDT") if "USDT" in symbol and "-" not in symbol else symbol
+        okx_interval = okx_tf_map.get(timeframe, timeframe)
+        
+        okx_params = {
+            "instId": okx_symbol,
+            "bar": okx_interval,
+            "limit": "250"
+        }
+        
+        # Pull from public OKX verification channel
+        okx_response = requests.get("https://www.okx.com/api/v5/market/candles", params=okx_params, timeout=3)
+        if okx_response.status_code == 200:
+            raw_data = okx_response.json()
+            if raw_data.get("code") == "0" and "data" in raw_data:
+                mexc_formatted_data = []
+                # OKX streams newest-to-oldest; reverse index arrays to match core calculation algorithms
+                for bar in raw_data["data"]:
+                    mexc_formatted_data.insert(0, [
+                        bar[0],  # Open Time
+                        bar[1],  # Open Price
+                        bar[2],  # High Price
+                        bar[3],  # Low Price
+                        bar[4]   # Close Price (Aligned perfectly to Index 4)
+                    ])
+                return mexc_formatted_data
+    except Exception:
         pass
+
     return None
 
 def run_pure_compression_math(symbol, timeframe):
@@ -98,13 +147,11 @@ def fetch_btc_regime_data():
     Part 2 Law: Connects live to MEXC for BTCUSDT and calculates
     the structural regimes dynamically for 15m, 60m, and 4h.
     """
-    # 🟩 UPDATED: Structural timeframes mapped exactly to standard MEXC API strings
     timeframes_p2 = ["15m", "60m", "4h"]
     results = {}
     
     for tf in timeframes_p2:
-        time.sleep(0.15)  # Pace connection to prevent browser drops
-        
+        time.sleep(0.15)  # Pacing safety rule remains untouched
         candles = fetch_mexc_candles("BTCUSDT", tf)
         if not candles or len(candles) < 50:
             results[tf] = {"regime": "UNKNOWN", "character": "DATA ERROR"}
@@ -144,7 +191,6 @@ st.markdown("## 🛰️ Centralized BTC Market Regime (SSoT Part 2)")
 # Pull calculations dynamically out of the live dictionary
 btc_data = fetch_btc_regime_data()
 
-# 🟩 UPDATED: Frontend table mapped clean to 15m, 60m, and 4h keys
 regime_table = f"""
 | TIMEFRAME | REGIME STATE | STRUCTURE CHARACTER |
 | :--- | :--- | :--- |
@@ -168,7 +214,6 @@ scan_results = {}
 
 # Background execution matrix loop block directly scanning the WATCHLIST
 for idx, asset in enumerate(WATCHLIST, 1):
-    # RESTORED THE WATCHLIST SYSTEM STATUS DISPLAY
     progress_text.markdown(f"⏳ *Scanning Watchlist Item {idx}/25:*\n### {asset}")
     
     scan_results[asset] = {}
@@ -178,8 +223,9 @@ for idx, asset in enumerate(WATCHLIST, 1):
         scan_results[asset][tf] = res
         
     # 🏛️ CODE LAW VALIDATION: MEGA SQZ ANALYSIS
+    # 🟩 PATCHED: Validates the live "2m" structural matrix key cleanly
     is_mega_sqz = (
-        scan_results[asset]["3m"]["sqz"]
+        scan_results[asset]["2m"]["sqz"]
         and scan_results[asset]["5m"]["sqz"]
         and scan_results[asset]["15m"]["sqz"]
     )
@@ -187,7 +233,6 @@ for idx, asset in enumerate(WATCHLIST, 1):
     if is_mega_sqz:
         mega_sqz_alerts.append(asset)
     else:
-        # Sort out distinct components when timelines do not fully overlap
         for tf in TIMEFRAMES:
             if scan_results[asset][tf]["sqz"]:
                 alert_entry = f"**{asset}** ({tf})"
