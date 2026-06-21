@@ -193,4 +193,102 @@ def fetch_btc_regime_data():
     results = {}
     
     for tf in timeframes_p2:
-                
+        time.sleep(0.15)
+        candles = fetch_mexc_candles("BTCUSDT", tf)
+        if not candles or len(candles) < 50:
+            results[tf] = {"regime": "UNKNOWN", "character": "DATA ERROR"}
+            continue
+            
+        closes = [float(candle[4]) for candle in candles]
+        current_price = closes[-1]
+        
+        recent_window = closes[-20:]
+        max_boundary = max(recent_window)
+        min_boundary = min(recent_window)
+        range_width = (max_boundary - min_boundary) / min_boundary
+        
+        sma20 = pd.Series(closes).rolling(window=20).mean().iloc[-1]
+        
+        if range_width <= 0.015:
+            if abs(current_price - sma20) / sma20 <= 0.002:
+                results[tf] = {"regime": "RANGING", "character": "INTERNAL BOX"}
+            else:
+                results[tf] = {"regime": "RANGING", "character": "BOX"}
+        else:
+            results[tf] = {"regime": "TRENDING", "character": "CLEAR"}
+            
+    return results
+
+
+# ==============================================================================
+# STREAMLIT USER INTERFACE VIEWPORT
+# ==============================================================================
+
+st.markdown("## 🛰️ Centralized BTC Market Regime (SSoT Part 2)")
+
+btc_data = fetch_btc_regime_data()
+
+regime_table = f"""
+| TIMEFRAME | REGIME STATE | STRUCTURE CHARACTER |
+| :--- | :--- | :--- |
+| 15m | **{btc_data.get('15m', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('15m', {}).get('character', 'DATA ERROR')} |
+| 60m | **{btc_data.get('60m', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('60m', {}).get('character', 'DATA ERROR')}  |
+| 4h  | **{btc_data.get('4h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('4h', {}).get('character', 'DATA ERROR')}  |
+"""
+st.markdown(regime_table)
+st.markdown("---")
+
+st.markdown("## 🏹 Strategy Monitor")
+
+all_together_alerts = []
+special_one_alerts = []
+mega_sqz_alerts = []
+
+progress_text = st.empty()
+scan_results = {}
+
+for idx, asset in enumerate(WATCHLIST, 1):
+    progress_text.markdown(f"⏳ *Scanning Watchlist Item {idx}/25:*\n### {asset}")
+    
+    scan_results[asset] = {}
+    
+    for tf in TIMEFRAMES:
+        res = run_pure_compression_math(asset, tf)
+        scan_results[asset][tf] = res
+        
+    # 🏛️ CODE LAW VALIDATION: MEGA SQZ ANALYSIS
+    is_mega_sqz = (
+        scan_results[asset]["2m"]["sqz"]
+        and scan_results[asset]["5m"]["sqz"]
+        and scan_results[asset]["15m"]["sqz"]
+    )
+    
+    if is_mega_sqz:
+        mega_sqz_alerts.append(asset)
+    else:
+        for tf in TIMEFRAMES:
+            if scan_results[asset][tf]["sqz"]:
+                alert_entry = f"**{asset}** ({tf})"
+                if scan_results[asset][tf]["type"] == "ALL TOGETHER":
+                    all_together_alerts.append(alert_entry)
+                elif scan_results[asset][tf]["type"] == "SPECIAL ONE":
+                    special_one_alerts.append(alert_entry)
+
+progress_text.markdown(f"✅ *Watchlist Scan Complete (25/25 Assets Checked)*")
+
+# 1. MEGA SQZ PRESENTATION BANNER LAYER
+if mega_sqz_alerts:
+    for mega_asset in mega_sqz_alerts:
+        st.error(f"🚨 **{mega_asset} MEGA SQZ SYSTEM LOCK: ACTIVE** 🚨")
+
+# 2. STANDARD LOGIC REPORTING TIERS
+if not mega_sqz_alerts and not all_together_alerts and not special_one_alerts:
+    st.info("No active MEGA SQZ, ALL TOGETHER, or SPECIAL ONE states detected.")
+else:
+    if all_together_alerts:
+        st.success(f"🟩 **ALL TOGETHER COMPRESSION ACTIVE:** {', '.join(all_together_alerts)}")
+        
+    if special_one_alerts:
+        st.warning(f"🟦 **SPECIAL ONE COMPRESSION ACTIVE:** {', '.join(special_one_alerts)}")
+
+st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
