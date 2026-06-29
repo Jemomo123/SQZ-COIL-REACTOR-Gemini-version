@@ -39,12 +39,14 @@ def calculate_sma(prices, period):
 
 def calculate_atr_volatility(symbol, timeframe="15m", period=14):
     """Calculates pure percentage-based volatility to rank assets easily using a fresh lookback."""
-    # Re-use the existing high-integrity fetcher to stay lean
     candles = fetch_mexc_candles(symbol, timeframe)
     if not candles or len(candles) < (period + 1):
         return 0.0
         
-    df = pd.DataFrame(candles, columns=['time', 'open', 'high', 'low', 'close'])
+    # 🏛️ FIXED LAW: Trim incoming candle data down to exactly the 5 columns expected by pandas
+    cleaned_candles = [candle[:5] for candle in candles]
+    
+    df = pd.DataFrame(cleaned_candles, columns=['time', 'open', 'high', 'low', 'close'])
     df[['high', 'low', 'close']] = df[['high', 'low', 'close']].astype(float)
     
     df['prev_close'] = df['close'].shift(1)
@@ -64,7 +66,6 @@ def fetch_mexc_candles(symbol, timeframe):
     Primary Route: MEXC Public REST API
     Failover Route: OKX v5 Public REST API (Fires instantly if MEXC drops or throttles)
     """
-    # Normalized configuration parameters to secure both endpoints
     mexc_tf = "60m" if timeframe == "1h" else timeframe
     
     okx_tf_map = {
@@ -374,4 +375,4 @@ else:
         st.warning(f"🔵 **SWING SPECIAL ONE:** {', '.join(swing_so_alerts)}")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    
+                
