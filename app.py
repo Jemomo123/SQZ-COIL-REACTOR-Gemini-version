@@ -43,12 +43,16 @@ def fetch_mexc_candles(symbol, timeframe):
     Primary Route: MEXC Public REST API
     Failover Route: OKX v5 Public REST API (Fires instantly if MEXC drops or throttles)
     """
+    # Normalized configuration parameters to secure both endpoints
+    mexc_tf = "60m" if timeframe == "1h" else timeframe
+    
     okx_tf_map = {
         "2m": "2m",
         "3m": "3m",
         "5m": "5m",
         "15m": "15m",
         "1h": "1H",
+        "60m": "1H",
         "4h": "4H",
         "1d": "1D"
     }
@@ -56,7 +60,7 @@ def fetch_mexc_candles(symbol, timeframe):
     # 1️⃣ PRIMARY CONNECTION LINE: Attempt Live Fetch from MEXC
     mexc_params = {
         "symbol": symbol,
-        "interval": timeframe,
+        "interval": mexc_tf,
         "limit": 250
     }
     try:
@@ -69,7 +73,7 @@ def fetch_mexc_candles(symbol, timeframe):
     # 2️⃣ AUTOMATIC SHIELD FAILOVER LINE: Triggers immediately if MEXC fails
     try:
         okx_symbol = symbol.replace("USDT", "-USDT") if "USDT" in symbol and "-" not in symbol else symbol
-        okx_interval = okx_tf_map.get(timeframe, timeframe)
+        okx_interval = okx_tf_map.get(timeframe, "1H")
         
         okx_params = {
             "instId": okx_symbol,
@@ -100,7 +104,6 @@ def run_pure_compression_math(symbol, timeframe):
     """
     Core Part 1 Algorithm Engine.
     Executes True Cluster-Based Convergence over Cluster Average Denominators.
-    Eliminates all false positives by analyzing total group spread without rounding shortcuts.
     """
     candles = fetch_mexc_candles(symbol, timeframe)
     if not candles or len(candles) < 200:
@@ -115,7 +118,6 @@ def run_pure_compression_math(symbol, timeframe):
             "so_spread_pct": 0.0
         }
     
-    # Extract structural bar closing positions as raw floats
     closes = [float(candle[4]) for candle in candles]
     live_price = closes[-1]
     
@@ -123,74 +125,48 @@ def run_pure_compression_math(symbol, timeframe):
     sma100 = calculate_sma(closes, 100)
     sma200 = calculate_sma(closes, 200)
     
-    # --------------------------------------------------------------------------
-    # 🟩 1. TRUE CLUSTER-BASED CONVERGENCE: ALL TOGETHER
-    # --------------------------------------------------------------------------
+    # 🟩 1. ALL TOGETHER CONVERGENCE
     highest_at = max(live_price, sma20, sma100)
     lowest_at = min(live_price, sma20, sma100)
     cluster_avg_at = (live_price + sma20 + sma100) / 3.0
-    
     at_spread_raw = (highest_at - lowest_at) / cluster_avg_at
     all_together = at_spread_raw <= THRESHOLD
 
-    # --------------------------------------------------------------------------
-    # 🟦 2. TRUE CLUSTER-BASED CONVERGENCE: SPECIAL ONE
-    # --------------------------------------------------------------------------
+    # 🟦 2. SPECIAL ONE CONVERGENCE
     highest_so = max(live_price, sma20, sma200)
     lowest_so = min(live_price, sma20, sma200)
     cluster_avg_so = (live_price + sma20 + sma200) / 3.0
-    
     so_spread_raw = (highest_so - lowest_so) / cluster_avg_so
     special_one = so_spread_raw <= THRESHOLD
     
-    # Extract exact percentage variants for diagnostic layers
     at_spread_pct = at_spread_raw * 100
     so_spread_pct = so_spread_raw * 100
     
-    # --------------------------------------------------------------------------
-    # 🎯 3. DETECTION PRIORITY & DEBUG ENGINE ROUTING
-    # --------------------------------------------------------------------------
     if all_together:
         return {
-            "sqz": True,
-            "type": "ALL TOGETHER",
-            "live_price": live_price,
-            "sma20": sma20,
-            "sma100": sma100,
-            "sma200": sma200,
-            "at_spread_pct": at_spread_pct,
-            "so_spread_pct": so_spread_pct
+            "sqz": True, "type": "ALL TOGETHER",
+            "live_price": live_price, "sma20": sma20, "sma100": sma100, "sma200": sma200,
+            "at_spread_pct": at_spread_pct, "so_spread_pct": so_spread_pct
         }
-        
     elif special_one:
         return {
-            "sqz": True,
-            "type": "SPECIAL ONE",
-            "live_price": live_price,
-            "sma20": sma20,
-            "sma100": sma100,
-            "sma200": sma200,
-            "at_spread_pct": at_spread_pct,
-            "so_spread_pct": so_spread_pct
+            "sqz": True, "type": "SPECIAL ONE",
+            "live_price": live_price, "sma20": sma20, "sma100": sma100, "sma200": sma200,
+            "at_spread_pct": at_spread_pct, "so_spread_pct": so_spread_pct
         }
         
     return {
-        "sqz": False,
-        "type": "NONE",
-        "live_price": live_price,
-        "sma20": sma20,
-        "sma100": sma100,
-        "sma200": sma200,
-        "at_spread_pct": at_spread_pct,
-        "so_spread_pct": so_spread_pct
+        "sqz": False, "type": "NONE",
+        "live_price": live_price, "sma20": sma20, "sma100": sma100, "sma200": sma200,
+        "at_spread_pct": at_spread_pct, "so_spread_pct": so_spread_pct
     }
 
 def fetch_btc_regime_data():
     """
     Part 2 Law: Connects live to MEXC for BTCUSDT and calculates
-    the structural regimes dynamically for 15m, 60m, and 4h.
+    the structural regimes dynamically for 15m, 1h, and 4h.
     """
-    timeframes_p2 = ["15m", "60m", "4h"]
+    timeframes_p2 = ["15m", "1h", "4h"]
     results = {}
     
     for tf in timeframes_p2:
@@ -233,8 +209,8 @@ regime_table = f"""
 | TIMEFRAME | REGIME STATE | STRUCTURE CHARACTER |
 | :--- | :--- | :--- |
 | 15m | **{btc_data.get('15m', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('15m', {}).get('character', 'DATA ERROR')} |
-| 60m | **{btc_data.get('60m', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('60m', {}).get('character', 'DATA ERROR')}  |
-| 4h  | **{btc_data.get('4h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('4h', {}).get('character', 'DATA ERROR')}  |
+| 1h  | **{btc_data.get('1h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('1h', {}).get('character', 'DATA ERROR')}   |
+| 4h  | **{btc_data.get('4h', {}).get('regime', 'UNKNOWN')}** | {btc_data.get('4h', {}).get('character', 'DATA ERROR')}   |
 """
 st.markdown(regime_table)
 st.markdown("---")
@@ -350,4 +326,3 @@ else:
         st.warning(f"🔵 **SWING SPECIAL ONE:** {', '.join(swing_so_alerts)}")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    
