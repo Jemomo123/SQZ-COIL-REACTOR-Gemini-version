@@ -319,6 +319,24 @@ progress_text.markdown(f"✅ *Watchlist Scan Complete (25/25 Assets Checked)*")
 st.markdown("### 🔥 High-Volatility Vol Index Leaders (15m)")
 sorted_vol = sorted(volatility_ranking.items(), key=lambda x: x[1], reverse=True)
 
+# 📱 FORCE HORIZONTAL COLUMNS ON NARROW MOBILE DISPLAY WINDOWS
+st.markdown(
+    """
+    <style>
+    [data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+    }
+    [data-testid="stMetric"] {
+        width: min-content !important;
+        min-width: 30% !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # Safeguard to prevent crashing if the watchlist fails to load values
 if sorted_vol and len(sorted_vol) >= 3:
     top_3 = sorted_vol[:3]
@@ -375,4 +393,4 @@ else:
         st.warning(f"🔵 **SWING SPECIAL ONE:** {', '.join(swing_so_alerts)}")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                
+            
