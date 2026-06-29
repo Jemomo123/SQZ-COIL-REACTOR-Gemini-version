@@ -15,8 +15,9 @@ st.set_page_config(
 
 # Target Constants
 EXCHANGE_API_URL = "https://api.mexc.com/api/v3/klines"
-# 🟩 PATCHED: Swapped "3m" out and introduced the "2m" timeframe natively
+# 🟩 SCALPING AND SWING TIMEFRAME SEPARATORS
 TIMEFRAMES = ["2m", "5m", "15m"]
+SWING_TIMEFRAMES = ["1h", "4h", "1d"]  # Dedicated Swing Channels
 THRESHOLD = 0.001  # Hard steel wall ceiling: <= 0.1%
 
 # 📋 THE NEW NOTEBOOK WATCHLIST POOL (25 Tokens) - FULLY UPDATED
@@ -47,9 +48,9 @@ def fetch_mexc_candles(symbol, timeframe):
         "3m": "3m",
         "5m": "5m",
         "15m": "15m",
-        "60m": "1H",
         "1h": "1H",
-        "4h": "4H"
+        "4h": "4H",
+        "1d": "1D"
     }
 
     # 1️⃣ PRIMARY CONNECTION LINE: Attempt Live Fetch from MEXC
@@ -240,9 +241,15 @@ st.markdown("---")
 
 st.markdown("## 🏹 Strategy Monitor")
 
+# Scalping Lists
 all_together_alerts = []
 special_one_alerts = []
 mega_sqz_alerts = []
+
+# Swing Trading Lists
+swing_at_alerts = []
+swing_so_alerts = []
+swing_mega_alerts = []
 
 progress_text = st.empty()
 scan_results = {}
@@ -252,17 +259,31 @@ for idx, asset in enumerate(WATCHLIST, 1):
     
     scan_results[asset] = {}
     
+    # ⚡ Run standard high-velocity timeframes
     for tf in TIMEFRAMES:
         res = run_pure_compression_math(asset, tf)
         scan_results[asset][tf] = res
+
+    # 🏹 Run macro swing timeframes
+    for tf in SWING_TIMEFRAMES:
+        res = run_pure_compression_math(asset, tf)
+        scan_results[asset][tf] = res
         
-    # 🏛️ CODE LAW VALIDATION: MEGA SQZ ANALYSIS
+    # 🏛️ CODE LAW VALIDATION: SCALPING MEGA SQZ ANALYSIS
     is_mega_sqz = (
         scan_results[asset]["2m"]["sqz"]
         and scan_results[asset]["5m"]["sqz"]
         and scan_results[asset]["15m"]["sqz"]
     )
     
+    # 🏛️ CODE LAW VALIDATION: SWING MEGA SQZ ANALYSIS
+    is_swing_mega = (
+        scan_results[asset]["1h"]["sqz"]
+        and scan_results[asset]["4h"]["sqz"]
+        and scan_results[asset]["1d"]["sqz"]
+    )
+    
+    # Sort Scalping Signals
     if is_mega_sqz:
         mega_sqz_alerts.append(asset)
     else:
@@ -274,21 +295,59 @@ for idx, asset in enumerate(WATCHLIST, 1):
                 elif scan_results[asset][tf]["type"] == "SPECIAL ONE":
                     special_one_alerts.append(alert_entry)
 
+    # Sort Swing Signals
+    if is_swing_mega:
+        swing_mega_alerts.append(asset)
+    else:
+        for tf in SWING_TIMEFRAMES:
+            if scan_results[asset][tf]["sqz"]:
+                swing_entry = f"**{asset}** ({tf})"
+                if scan_results[asset][tf]["type"] == "ALL TOGETHER":
+                    swing_at_alerts.append(swing_entry)
+                elif scan_results[asset][tf]["type"] == "SPECIAL ONE":
+                    swing_so_alerts.append(swing_entry)
+
 progress_text.markdown(f"✅ *Watchlist Scan Complete (25/25 Assets Checked)*")
 
-# 1. MEGA SQZ PRESENTATION BANNER LAYER
+# ==============================================================================
+# UNFILTERED REPORTING VIEWPORT INTERFACES
+# ==============================================================================
+
+# --------------------------------------------------------------------------
+# SECTION A: SCALPING CHANNELS (2m, 5m, 15m)
+# --------------------------------------------------------------------------
+st.markdown("### ⚡ Scalping Squeezes")
+
 if mega_sqz_alerts:
     for mega_asset in mega_sqz_alerts:
-        st.error(f"🚨 **{mega_asset} MEGA SQZ SYSTEM LOCK: ACTIVE** 🚨")
+        st.error(f"🚨 **{mega_asset} SCALPING MEGA SQZ ACTIVE** 🚨")
 
-# 2. STANDARD LOGIC REPORTING TIERS
 if not mega_sqz_alerts and not all_together_alerts and not special_one_alerts:
-    st.info("No active MEGA SQZ, ALL TOGETHER, or SPECIAL ONE states detected.")
+    st.info("No active high-velocity compression states detected.")
 else:
     if all_together_alerts:
-        st.success(f"🟩 **ALL TOGETHER COMPRESSION ACTIVE:** {', '.join(all_together_alerts)}")
-        
+        st.success(f"🟩 **ALL TOGETHER COMPRESSION:** {', '.join(all_together_alerts)}")
     if special_one_alerts:
-        st.warning(f"🟦 **SPECIAL ONE COMPRESSION ACTIVE:** {', '.join(special_one_alerts)}")
+        st.warning(f"🟦 **SPECIAL ONE COMPRESSION:** {', '.join(special_one_alerts)}")
+
+st.markdown("---")
+
+# --------------------------------------------------------------------------
+# SECTION B: DEDICATED SWING TRADING MATRIX (1h, 4h, 1d)
+# --------------------------------------------------------------------------
+st.markdown("### 🏹 Swing Trade Compressions")
+
+if swing_mega_alerts:
+    for swing_mega_asset in swing_mega_alerts:
+        st.error(f"🐳 **{swing_mega_asset} SWING MEGA SQZ ACTIVE (1h+4h+1d)** 🐳")
+
+if not swing_mega_alerts and not swing_at_alerts and not swing_so_alerts:
+    st.info("No macro swing trade setups detected on 1h, 4h, or 1d channels.")
+else:
+    if swing_at_alerts:
+        st.success(f"🟢 **SWING ALL TOGETHER:** {', '.join(swing_at_alerts)}")
+    if swing_so_alerts:
+        st.warning(f"🔵 **SWING SPECIAL ONE:** {', '.join(swing_so_alerts)}")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    
