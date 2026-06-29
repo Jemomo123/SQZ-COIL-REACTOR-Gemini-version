@@ -37,6 +37,27 @@ def calculate_sma(prices, period):
     """Calculates pure mathematical Simple Moving Average."""
     return pd.Series(prices).rolling(window=period).mean().iloc[-1]
 
+def calculate_atr_volatility(symbol, timeframe="15m", period=14):
+    """Calculates pure percentage-based volatility to rank assets easily using a fresh lookback."""
+    # Re-use the existing high-integrity fetcher to stay lean
+    candles = fetch_mexc_candles(symbol, timeframe)
+    if not candles or len(candles) < (period + 1):
+        return 0.0
+        
+    df = pd.DataFrame(candles, columns=['time', 'open', 'high', 'low', 'close'])
+    df[['high', 'low', 'close']] = df[['high', 'low', 'close']].astype(float)
+    
+    df['prev_close'] = df['close'].shift(1)
+    df['tr1'] = df['high'] - df['low']
+    df['tr2'] = (df['high'] - df['prev_close']).abs()
+    df['tr3'] = (df['low'] - df['prev_close']).abs()
+    
+    df['tr'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
+    atr_val = df['tr'].rolling(window=period).mean().iloc[-1]
+    latest_close = df['close'].iloc[-1]
+    
+    return (atr_val / latest_close) * 100 if latest_close > 0 else 0.0
+
 def fetch_mexc_candles(symbol, timeframe):
     """
     High-integrity historical bar engine with Supreme Failover Protection.
@@ -227,6 +248,9 @@ swing_at_alerts = []
 swing_so_alerts = []
 swing_mega_alerts = []
 
+# Volatility Tracking Repository
+volatility_ranking = {}
+
 progress_text = st.empty()
 scan_results = {}
 
@@ -244,6 +268,9 @@ for idx, asset in enumerate(WATCHLIST, 1):
     for tf in SWING_TIMEFRAMES:
         res = run_pure_compression_math(asset, tf)
         scan_results[asset][tf] = res
+        
+    # Calculate 15m Volatility Rating for Leaderboard Sorting
+    volatility_ranking[asset] = calculate_atr_volatility(asset, timeframe="15m", period=14)
         
     # 🏛️ CODE LAW VALIDATION: SCALPING MEGA SQZ ANALYSIS
     is_mega_sqz = (
@@ -284,6 +311,27 @@ for idx, asset in enumerate(WATCHLIST, 1):
                     swing_so_alerts.append(swing_entry)
 
 progress_text.markdown(f"✅ *Watchlist Scan Complete (25/25 Assets Checked)*")
+
+# --------------------------------------------------------------------------
+# 🔥 AUTOMATED LEADERBOARD LAYER: THE MOST VOLATILE PAIRS
+# --------------------------------------------------------------------------
+st.markdown("### 🔥 High-Volatility Vol Index Leaders (15m)")
+sorted_vol = sorted(volatility_ranking.items(), key=lambda x: x[1], reverse=True)
+
+# Safeguard to prevent crashing if the watchlist fails to load values
+if sorted_vol and len(sorted_vol) >= 3:
+    top_3 = sorted_vol[:3]
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(label=f"🥇 1st: {top_3[0][0]}", value=f"{top_3[0][1]:.2f}%")
+    with col2:
+        st.metric(label=f"🥈 2nd: {top_3[1][0]}", value=f"{top_3[1][1]:.2f}%")
+    with col3:
+        st.metric(label=f"🥉 3rd: {top_3[2][0]}", value=f"{top_3[2][1]:.2f}%")
+else:
+    st.info("Calculating initial volatility trends...")
+
+st.markdown("---")
 
 # ==============================================================================
 # UNFILTERED REPORTING VIEWPORT INTERFACES
@@ -326,3 +374,4 @@ else:
         st.warning(f"🔵 **SWING SPECIAL ONE:** {', '.join(swing_so_alerts)}")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    
