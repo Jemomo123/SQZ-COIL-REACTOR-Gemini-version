@@ -249,6 +249,9 @@ swing_at_alerts = []
 swing_so_alerts = []
 swing_mega_alerts = []
 
+# 🎯 Dedicated Confluence Tracking for Section D
+high_vol_confluence_alerts = []
+
 # Volatility Tracking Repository
 volatility_ranking = {}
 
@@ -313,11 +316,27 @@ for idx, asset in enumerate(WATCHLIST, 1):
 
 progress_text.markdown(f"✅ *Watchlist Scan Complete (25/25 Assets Checked)*")
 
+# Sort Volatility to discover Top 3 immediately before rendering layout elements
+sorted_vol = sorted(volatility_ranking.items(), key=lambda x: x[1], reverse=True)
+top_3_symbols = [item[0] for item in sorted_vol[:3]] if len(sorted_vol) >= 3 else []
+
+# 🏛️ POST-SCAN LOGIC LAW: EXTRACT PLAIN ENGLISH SECTION D CONFLUENCE MATCHES
+for asset in top_3_symbols:
+    # Check if the top asset is undergoing any squeeze conditions
+    if asset in mega_sqz_alerts:
+        high_vol_confluence_alerts.append(f"🔥 **{asset}** is in a **HIGH-VOLATILITY MEGA SQUEEZE** across all scalping frames!")
+    if asset in swing_mega_alerts:
+        high_vol_confluence_alerts.append(f"🔥 **{asset}** is in a **HIGH-VOLATILITY SWING MEGA SQUEEZE** across all macro frames!")
+        
+    for tf in TIMEFRAMES + SWING_TIMEFRAMES:
+        if scan_results[asset].get(tf, {}).get("sqz"):
+            sqz_type = scan_results[asset][tf]["type"]
+            high_vol_confluence_alerts.append(f"🔥 **{asset}** has an active **{sqz_type} SQUEEZE** on the **{tf}** timeframe!")
+
 # --------------------------------------------------------------------------
 # 🔥 AUTOMATED LEADERBOARD LAYER: THE MOST VOLATILE PAIRS
 # --------------------------------------------------------------------------
 st.markdown("### 🔥 High-Volatility Vol Index Leaders (15m)")
-sorted_vol = sorted(volatility_ranking.items(), key=lambda x: x[1], reverse=True)
 
 # 📱 FORCE HORIZONTAL COLUMNS ON NARROW MOBILE DISPLAY WINDOWS
 st.markdown(
@@ -392,5 +411,20 @@ else:
     if swing_so_alerts:
         st.warning(f"🔵 **SWING SPECIAL ONE:** {', '.join(swing_so_alerts)}")
 
+st.markdown("---")
+
+# --------------------------------------------------------------------------
+# 🎯 SECTION D: HIGH-VOLATILITY EXPLOSIVE SETUPS (CONFLUENCE ENGINE)
+# --------------------------------------------------------------------------
+st.markdown("### 🎯 Section D: High-Volatility Explosive Setups")
+
+if high_vol_confluence_alerts:
+    # Deduplicate in case a coin triggers multiple rows cleanly
+    unique_confluence_alerts = list(set(high_vol_confluence_alerts))
+    for alert in unique_confluence_alerts:
+        st.error(alert)
+else:
+    st.info("Plain English: None of the Top 3 high-volatility leaders are currently squeezing.")
+
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-            
+    
