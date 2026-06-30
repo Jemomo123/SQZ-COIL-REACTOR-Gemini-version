@@ -3,6 +3,7 @@ import time
 import requests
 import pandas as pd
 import streamlit as st
+from concurrent.futures import ThreadPoolExecutor
 
 # ==============================================================================
 # 🏛️ JEREMIAH EDGE ARCHITECTURE LAW: CONFIGURATION & MOBILE WORKSPACE SETTINGS
@@ -29,6 +30,8 @@ WATCHLIST = [
     "GOOGLUSDT", "FLOKIUSDT", "IWMUSDT", "MOODENGUSDT", "NEARUSDT"
 ]
 
+# 🧠 IN-MEMORY CACHE REPOSITORY FOR SINGLE-SCAN CYCLE ELIMINATION
+candle_cache = {}
 
 # ==============================================================================
 # DATA CALCULATION PIPELINE (HIGH-PRECISION MATH ENGINE)
@@ -37,15 +40,61 @@ def calculate_sma(prices, period):
     """Calculates pure mathematical Simple Moving Average."""
     return pd.Series(prices).rolling(window=period).mean().iloc[-1]
 
+def fetch_mexc_candles(symbol, timeframe):
+    """
+    High-integrity historical bar engine with Supreme Failover Protection and Single-Scan Caching.
+    Primary Route: MEXC Public REST API
+    Failover Route: OKX v5 Public REST API
+    """
+    # Check cache line first before hitting the network pipes
+    if (symbol, timeframe) in candle_cache:
+        return candle_cache[(symbol, timeframe)]
+
+    mexc_tf = "60m" if timeframe == "1h" else timeframe
+    
+    okx_tf_map = {
+        "2m": "2m", "3m": "3m", "5m": "5m", "15m": "15m",
+        "1h": "1H", "60m": "1H", "4h": "4H", "1d": "1D"
+    }
+
+    # 1️⃣ PRIMARY CONNECTION LINE: Attempt Live Fetch from MEXC
+    mexc_params = {"symbol": symbol, "interval": mexc_tf, "limit": 250}
+    try:
+        response = requests.get(EXCHANGE_API_URL, params=mexc_params, timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            candle_cache[(symbol, timeframe)] = data
+            return data
+    except Exception:
+        pass
+
+    # 2️⃣ AUTOMATIC SHIELD FAILOVER LINE: Triggers immediately if MEXC fails
+    try:
+        okx_symbol = symbol.replace("USDT", "-USDT") if "USDT" in symbol and "-" not in symbol else symbol
+        okx_interval = okx_tf_map.get(timeframe, "1H")
+        okx_params = {"instId": okx_symbol, "bar": okx_interval, "limit": "250"}
+        
+        okx_response = requests.get("https://www.okx.com/api/v5/market/candles", params=okx_params, timeout=3)
+        if okx_response.status_code == 200:
+            raw_data = okx_response.json()
+            if raw_data.get("code") == "0" and "data" in raw_data:
+                mexc_formatted_data = []
+                for bar in raw_data["data"]:
+                    mexc_formatted_data.insert(0, [bar[0], bar[1], bar[2], bar[3], bar[4]])
+                candle_cache[(symbol, timeframe)] = mexc_formatted_data
+                return mexc_formatted_data
+    except Exception:
+        pass
+
+    return None
+
 def calculate_atr_volatility(symbol, timeframe="15m", period=14):
-    """Calculates pure percentage-based volatility to rank assets easily using a fresh lookback."""
+    """Calculates pure percentage-based volatility reusing cached candles to protect network speed."""
     candles = fetch_mexc_candles(symbol, timeframe)
     if not candles or len(candles) < (period + 1):
         return 0.0
         
-    # 🏛️ FIXED LAW: Trim incoming candle data down to exactly the 5 columns expected by pandas
     cleaned_candles = [candle[:5] for candle in candles]
-    
     df = pd.DataFrame(cleaned_candles, columns=['time', 'open', 'high', 'low', 'close'])
     df[['high', 'low', 'close']] = df[['high', 'low', 'close']].astype(float)
     
@@ -60,84 +109,18 @@ def calculate_atr_volatility(symbol, timeframe="15m", period=14):
     
     return (atr_val / latest_close) * 100 if latest_close > 0 else 0.0
 
-def fetch_mexc_candles(symbol, timeframe):
-    """
-    High-integrity historical bar engine with Supreme Failover Protection.
-    Primary Route: MEXC Public REST API
-    Failover Route: OKX v5 Public REST API (Fires instantly if MEXC drops or throttles)
-    """
-    mexc_tf = "60m" if timeframe == "1h" else timeframe
-    
-    okx_tf_map = {
-        "2m": "2m",
-        "3m": "3m",
-        "5m": "5m",
-        "15m": "15m",
-        "1h": "1H",
-        "60m": "1H",
-        "4h": "4H",
-        "1d": "1D"
-    }
-
-    # 1️⃣ PRIMARY CONNECTION LINE: Attempt Live Fetch from MEXC
-    mexc_params = {
-        "symbol": symbol,
-        "interval": mexc_tf,
-        "limit": 250
-    }
-    try:
-        response = requests.get(EXCHANGE_API_URL, params=mexc_params, timeout=3)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
-    # 2️⃣ AUTOMATIC SHIELD FAILOVER LINE: Triggers immediately if MEXC fails
-    try:
-        okx_symbol = symbol.replace("USDT", "-USDT") if "USDT" in symbol and "-" not in symbol else symbol
-        okx_interval = okx_tf_map.get(timeframe, "1H")
-        
-        okx_params = {
-            "instId": okx_symbol,
-            "bar": okx_interval,
-            "limit": "250"
-        }
-        
-        okx_response = requests.get("https://www.okx.com/api/v5/market/candles", params=okx_params, timeout=3)
-        if okx_response.status_code == 200:
-            raw_data = okx_response.json()
-            if raw_data.get("code") == "0" and "data" in raw_data:
-                mexc_formatted_data = []
-                for bar in raw_data["data"]:
-                    mexc_formatted_data.insert(0, [
-                        bar[0],  # Open Time
-                        bar[1],  # Open Price
-                        bar[2],  # High Price
-                        bar[3],  # Low Price
-                        bar[4]   # Close Price
-                    ])
-                return mexc_formatted_data
-    except Exception:
-        pass
-
-    return None
-
 def run_pure_compression_math(symbol, timeframe):
     """
     Core Part 1 Algorithm Engine.
-    Executes True Cluster-Based Convergence over Cluster Average Denominators.
+    Executes True Cluster-Based Convergence with complete precision debug array telemetry.
     """
     candles = fetch_mexc_candles(symbol, timeframe)
     if not candles or len(candles) < 200:
         return {
-            "sqz": False, 
-            "type": "NONE",
-            "live_price": 0.0,
-            "sma20": 0.0,
-            "sma100": 0.0,
-            "sma200": 0.0,
-            "at_spread_pct": 0.0,
-            "so_spread_pct": 0.0
+            "sqz": False, "type": "NONE", "live_price": 0.0,
+            "sma20": 0.0, "sma100": 0.0, "sma200": 0.0,
+            "at_spread_pct": 0.0, "so_spread_pct": 0.0,
+            "cluster_high": 0.0, "cluster_low": 0.0
         }
     
     closes = [float(candle[4]) for candle in candles]
@@ -168,31 +151,31 @@ def run_pure_compression_math(symbol, timeframe):
         return {
             "sqz": True, "type": "ALL TOGETHER",
             "live_price": live_price, "sma20": sma20, "sma100": sma100, "sma200": sma200,
-            "at_spread_pct": at_spread_pct, "so_spread_pct": so_spread_pct
+            "at_spread_pct": at_spread_pct, "so_spread_pct": so_spread_pct,
+            "cluster_high": float(highest_at), "cluster_low": float(lowest_at)
         }
     elif special_one:
         return {
             "sqz": True, "type": "SPECIAL ONE",
             "live_price": live_price, "sma20": sma20, "sma100": sma100, "sma200": sma200,
-            "at_spread_pct": at_spread_pct, "so_spread_pct": so_spread_pct
+            "at_spread_pct": at_spread_pct, "so_spread_pct": so_spread_pct,
+            "cluster_high": float(highest_so), "cluster_low": float(lowest_so)
         }
         
     return {
         "sqz": False, "type": "NONE",
         "live_price": live_price, "sma20": sma20, "sma100": sma100, "sma200": sma200,
-        "at_spread_pct": at_spread_pct, "so_spread_pct": so_spread_pct
+        "at_spread_pct": at_spread_pct, "so_spread_pct": so_spread_pct,
+        "cluster_high": float(highest_at if at_spread_raw < so_spread_raw else highest_so),
+        "cluster_low": float(lowest_at if at_spread_raw < so_spread_raw else lowest_so)
     }
 
 def fetch_btc_regime_data():
-    """
-    Part 2 Law: Connects live to MEXC for BTCUSDT and calculates
-    the structural regimes dynamically for 15m, 1h, and 4h.
-    """
+    """Calculates structural BTC regimes dynamically using single-point caching channels."""
     timeframes_p2 = ["15m", "1h", "4h"]
     results = {}
     
     for tf in timeframes_p2:
-        time.sleep(0.15)
         candles = fetch_mexc_candles("BTCUSDT", tf)
         if not candles or len(candles) < 50:
             results[tf] = {"regime": "UNKNOWN", "character": "DATA ERROR"}
@@ -200,12 +183,10 @@ def fetch_btc_regime_data():
             
         closes = [float(candle[4]) for candle in candles]
         current_price = closes[-1]
-        
         recent_window = closes[-20:]
         max_boundary = max(recent_window)
         min_boundary = min(recent_window)
         range_width = (max_boundary - min_boundary) / min_boundary
-        
         sma20 = pd.Series(closes).rolling(window=20).mean().iloc[-1]
         
         if range_width <= 0.015:
@@ -218,12 +199,23 @@ def fetch_btc_regime_data():
             
     return results
 
+def scan_single_asset(asset):
+    """Thread worker engine performing calculations inside a isolated, parallel tracking state."""
+    local_results = {}
+    for tf in TIMEFRAMES + SWING_TIMEFRAMES:
+        local_results[tf] = run_pure_compression_math(asset, tf)
+    vol_rating = calculate_atr_volatility(asset, timeframe="15m", period=14)
+    return asset, local_results, vol_rating
+
 
 # ==============================================================================
 # STREAMLIT USER INTERFACE VIEWPORT
 # ==============================================================================
 
 st.markdown("## 🛰️ Centralized BTC Market Regime (SSoT Part 2)")
+
+# Wipe cache fresh at the start of a clean dashboard viewport loop execution
+candle_cache.clear()
 
 btc_data = fetch_btc_regime_data()
 
@@ -239,58 +231,44 @@ st.markdown("---")
 
 st.markdown("## 🏹 Strategy Monitor")
 
-# Scalping Lists
+# Alert tracking architecture
 all_together_alerts = []
 special_one_alerts = []
 mega_sqz_alerts = []
 
-# Swing Trading Lists
 swing_at_alerts = []
 swing_so_alerts = []
 swing_mega_alerts = []
 
-# 🎯 Dedicated Confluence Tracking for Section D
 high_vol_confluence_alerts = []
-
-# Volatility Tracking Repository
 volatility_ranking = {}
-
-progress_text = st.empty()
 scan_results = {}
 
-for idx, asset in enumerate(WATCHLIST, 1):
-    progress_text.markdown(f"⏳ *Scanning Watchlist Item {idx}/25:*\n### {asset}")
-    
-    scan_results[asset] = {}
-    
-    # ⚡ Run standard high-velocity timeframes
-    for tf in TIMEFRAMES:
-        res = run_pure_compression_math(asset, tf)
-        scan_results[asset][tf] = res
+# ⚡ CONCURRENT SCANNING MATRIX INTERFACE: RUNNING 8 ASSETS PARALLEL
+progress_text = st.empty()
+progress_text.markdown("⏳ **Executing High-Velocity Multi-Threaded Workspace Scan...**")
 
-    # 🏹 Run macro swing timeframes
-    for tf in SWING_TIMEFRAMES:
-        res = run_pure_compression_math(asset, tf)
-        scan_results[asset][tf] = res
-        
-    # Calculate 15m Volatility Rating for Leaderboard Sorting
-    volatility_ranking[asset] = calculate_atr_volatility(asset, timeframe="15m", period=14)
-        
-    # 🏛️ CODE LAW VALIDATION: SCALPING MEGA SQZ ANALYSIS
+with ThreadPoolExecutor(max_workers=8) as executor:
+    futures = [executor.submit(scan_single_asset, asset) for asset in WATCHLIST]
+    for future in futures:
+        asset, local_results, vol_rating = future.result()
+        scan_results[asset] = local_results
+        volatility_ranking[asset] = vol_rating
+
+# 🏛️ POST-SCAN SIGNAL ANALYSIS AND RE-ROUTING PIPELINE
+for asset in WATCHLIST:
     is_mega_sqz = (
         scan_results[asset]["2m"]["sqz"]
         and scan_results[asset]["5m"]["sqz"]
         and scan_results[asset]["15m"]["sqz"]
     )
-    
-    # 🏛️ CODE LAW VALIDATION: SWING MEGA SQZ ANALYSIS
     is_swing_mega = (
         scan_results[asset]["1h"]["sqz"]
         and scan_results[asset]["4h"]["sqz"]
         and scan_results[asset]["1d"]["sqz"]
     )
     
-    # Sort Scalping Signals
+    # Pack Scalping signals safely
     if is_mega_sqz:
         mega_sqz_alerts.append(asset)
     else:
@@ -302,7 +280,7 @@ for idx, asset in enumerate(WATCHLIST, 1):
                 elif scan_results[asset][tf]["type"] == "SPECIAL ONE":
                     special_one_alerts.append(alert_entry)
 
-    # Sort Swing Signals
+    # Pack Swing signals safely
     if is_swing_mega:
         swing_mega_alerts.append(asset)
     else:
@@ -314,15 +292,14 @@ for idx, asset in enumerate(WATCHLIST, 1):
                 elif scan_results[asset][tf]["type"] == "SPECIAL ONE":
                     swing_so_alerts.append(swing_entry)
 
-progress_text.markdown(f"✅ *Watchlist Scan Complete (25/25 Assets Checked)*")
+progress_text.markdown(f"✅ *Watchlist Scan Complete (25/25 Assets Cached & Calculated)*")
 
-# Sort Volatility to discover Top 3 immediately before rendering layout elements
+# Sort Volatility to discover Top 3 immediately 
 sorted_vol = sorted(volatility_ranking.items(), key=lambda x: x[1], reverse=True)
 top_3_symbols = [item[0] for item in sorted_vol[:3]] if len(sorted_vol) >= 3 else []
 
-# 🏛️ POST-SCAN LOGIC LAW: EXTRACT PLAIN ENGLISH SECTION D CONFLUENCE MATCHES
+# 🏛️ SECTION D EXTRACTION LOGIC
 for asset in top_3_symbols:
-    # Check if the top asset is undergoing any squeeze conditions
     if asset in mega_sqz_alerts:
         high_vol_confluence_alerts.append(f"🔥 **{asset}** is in a **HIGH-VOLATILITY MEGA SQUEEZE** across all scalping frames!")
     if asset in swing_mega_alerts:
@@ -338,34 +315,22 @@ for asset in top_3_symbols:
 # --------------------------------------------------------------------------
 st.markdown("### 🔥 High-Volatility Vol Index Leaders (15m)")
 
-# 📱 FORCE HORIZONTAL COLUMNS ON NARROW MOBILE DISPLAY WINDOWS
 st.markdown(
     """
     <style>
-    [data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-    }
-    [data-testid="stMetric"] {
-        width: min-content !important;
-        min-width: 30% !important;
-    }
+    [data-testid="stHorizontalBlock"] { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; }
+    [data-testid="stMetric"] { width: min-content !important; min-width: 30% !important; }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# Safeguard to prevent crashing if the watchlist fails to load values
 if sorted_vol and len(sorted_vol) >= 3:
     top_3 = sorted_vol[:3]
     col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(label=f"🥇 1st: {top_3[0][0]}", value=f"{top_3[0][1]:.2f}%")
-    with col2:
-        st.metric(label=f"🥈 2nd: {top_3[1][0]}", value=f"{top_3[1][1]:.2f}%")
-    with col3:
-        st.metric(label=f"🥉 3rd: {top_3[2][0]}", value=f"{top_3[2][1]:.2f}%")
+    with col1: st.metric(label=f"🥇 1st: {top_3[0][0]}", value=f"{top_3[0][1]:.2f}%")
+    with col2: st.metric(label=f"🥈 2nd: {top_3[1][0]}", value=f"{top_3[1][1]:.2f}%")
+    with col3: st.metric(label=f"🥉 3rd: {top_3[2][0]}", value=f"{top_3[2][1]:.2f}%")
 else:
     st.info("Calculating initial volatility trends...")
 
@@ -387,10 +352,8 @@ if mega_sqz_alerts:
 if not mega_sqz_alerts and not all_together_alerts and not special_one_alerts:
     st.info("No active high-velocity compression states detected.")
 else:
-    if all_together_alerts:
-        st.success(f"🟩 **ALL TOGETHER COMPRESSION:** {', '.join(all_together_alerts)}")
-    if special_one_alerts:
-        st.warning(f"🟦 **SPECIAL ONE COMPRESSION:** {', '.join(special_one_alerts)}")
+    if all_together_alerts: st.success(f"🟩 **ALL TOGETHER COMPRESSION:** {', '.join(all_together_alerts)}")
+    if special_one_alerts: st.warning(f"🟦 **SPECIAL ONE COMPRESSION:** {', '.join(special_one_alerts)}")
 
 st.markdown("---")
 
@@ -406,10 +369,8 @@ if swing_mega_alerts:
 if not swing_mega_alerts and not swing_at_alerts and not swing_so_alerts:
     st.info("No macro swing trade setups detected on 1h, 4h, or 1d channels.")
 else:
-    if swing_at_alerts:
-        st.success(f"🟢 **SWING ALL TOGETHER:** {', '.join(swing_at_alerts)}")
-    if swing_so_alerts:
-        st.warning(f"🔵 **SWING SPECIAL ONE:** {', '.join(swing_so_alerts)}")
+    if swing_at_alerts: st.success(f"🟢 **SWING ALL TOGETHER:** {', '.join(swing_at_alerts)}")
+    if swing_so_alerts: st.warning(f"🔵 **SWING SPECIAL ONE:** {', '.join(swing_so_alerts)}")
 
 st.markdown("---")
 
@@ -419,12 +380,11 @@ st.markdown("---")
 st.markdown("### 🎯 Section D: High-Volatility Explosive Setups")
 
 if high_vol_confluence_alerts:
-    # Deduplicate in case a coin triggers multiple rows cleanly
-    unique_confluence_alerts = list(set(high_vol_confluence_alerts))
+    # 🔒 ORDER-PRESERVING DEDUPLICATION PATCH
+    unique_confluence_alerts = list(dict.fromkeys(high_vol_confluence_alerts))
     for alert in unique_confluence_alerts:
         st.error(alert)
 else:
     st.info("Plain English: None of the Top 3 high-volatility leaders are currently squeezing.")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    
