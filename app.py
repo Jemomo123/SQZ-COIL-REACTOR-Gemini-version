@@ -3,7 +3,7 @@ import time
 import requests
 import pandas as pd
 import streamlit as st
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ==============================================================================
 # 🏛️ JEREMIAH EDGE ARCHITECTURE LAW: CONFIGURATION & MOBILE WORKSPACE SETTINGS
@@ -46,7 +46,6 @@ def fetch_mexc_candles(symbol, timeframe):
     Primary Route: MEXC Public REST API
     Failover Route: OKX v5 Public REST API
     """
-    # Check cache line first before hitting the network pipes
     if (symbol, timeframe) in candle_cache:
         return candle_cache[(symbol, timeframe)]
 
@@ -200,7 +199,7 @@ def fetch_btc_regime_data():
     return results
 
 def scan_single_asset(asset):
-    """Thread worker engine performing calculations inside a isolated, parallel tracking state."""
+    """Thread worker engine performing calculations inside an isolated, parallel tracking state."""
     local_results = {}
     for tf in TIMEFRAMES + SWING_TIMEFRAMES:
         local_results[tf] = run_pure_compression_math(asset, tf)
@@ -244,16 +243,22 @@ high_vol_confluence_alerts = []
 volatility_ranking = {}
 scan_results = {}
 
-# ⚡ CONCURRENT SCANNING MATRIX INTERFACE: RUNNING 8 ASSETS PARALLEL
+# ⚡ VISIBLE PARALLEL SCAN ENGINE: PROGRESS UPDATES DIRECT TO SCREEN
 progress_text = st.empty()
-progress_text.markdown("⏳ **Executing High-Velocity Multi-Threaded Workspace Scan...**")
+completed_count = 0
 
 with ThreadPoolExecutor(max_workers=8) as executor:
-    futures = [executor.submit(scan_single_asset, asset) for asset in WATCHLIST]
-    for future in futures:
-        asset, local_results, vol_rating = future.result()
-        scan_results[asset] = local_results
-        volatility_ranking[asset] = vol_rating
+    futures = {executor.submit(scan_single_asset, asset): asset for asset in WATCHLIST}
+    
+    for future in as_completed(futures):
+        asset = futures[future]
+        completed_count += 1
+        # Displays exactly which item out of 25 is running right now on your screen!
+        progress_text.markdown(f"⏳ *Scanning Watchlist Item {completed_count}/25:*\n### {asset}")
+        
+        asset_name, local_results, vol_rating = future.result()
+        scan_results[asset_name] = local_results
+        volatility_ranking[asset_name] = vol_rating
 
 # 🏛️ POST-SCAN SIGNAL ANALYSIS AND RE-ROUTING PIPELINE
 for asset in WATCHLIST:
@@ -388,3 +393,4 @@ else:
     st.info("Plain English: None of the Top 3 high-volatility leaders are currently squeezing.")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    
