@@ -21,7 +21,7 @@ TIMEFRAMES = ["2m", "5m", "15m"]
 SWING_TIMEFRAMES = ["1h", "4h", "1d"]  # Dedicated Swing Channels
 THRESHOLD = 0.001  # Hard steel wall ceiling: <= 0.1%
 
-# 📋 THE NEW NOTEBOOK WATCHLIST POOL (25 Tokens) - FULLY UPDATED
+# 📋 THE NEW NOTEBOOK WATCHLIST POOL (28 Tokens) - FULLY UPDATED
 WATCHLIST = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "PEPEUSDT", "BONKUSDT", 
     "SHIBUSDT", "USELESSUSDT", "SPACEUSDT", "MOVEUSDT", "ZECUSDT", 
@@ -255,8 +255,8 @@ with ThreadPoolExecutor(max_workers=8) as executor:
     for future in as_completed(futures):
         asset = futures[future]
         completed_count += 1
-        # Displays exactly which item out of 25 is running right now on your screen!
-        progress_text.markdown(f"⏳ *Scanning Watchlist Item {completed_count}/25:*\n### {asset}")
+        # Dynamically scales to watchlist length
+        progress_text.markdown(f"⏳ *Scanning Watchlist Item {completed_count}/{len(WATCHLIST)}:*\n### {asset}")
         
         asset_name, local_results, vol_rating = future.result()
         scan_results[asset_name] = local_results
@@ -299,7 +299,7 @@ for asset in WATCHLIST:
                 elif scan_results[asset][tf]["type"] == "SPECIAL ONE":
                     swing_so_alerts.append(swing_entry)
 
-progress_text.markdown(f"✅ *Watchlist Scan Complete (25/25 Assets Cached & Calculated)*")
+progress_text.markdown(f"✅ *Watchlist Scan Complete ({len(WATCHLIST)}/{len(WATCHLIST)} Assets Cached & Calculated)*")
 
 # Sort Volatility to discover Top 3 immediately 
 sorted_vol = sorted(volatility_ranking.items(), key=lambda x: x[1], reverse=True)
@@ -395,4 +395,3 @@ else:
     st.info("Plain English: None of the Top 3 high-volatility leaders are currently squeezing.")
 
 st.caption(f"Live workspace check timestamp: {time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    
